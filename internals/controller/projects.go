@@ -87,7 +87,7 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
-	folders := []string{"markdown", "html", "plaintext", "simpledocs"}
+	folders := []string{"markdown", "html", "plaintext", "simpledocs", "simpledocs/files"}
 
 	for _, folder := range folders {
 		err := createRepoContents(body.Name, name, folder, ctx)
@@ -97,7 +97,56 @@ func CreateNewProject(ctx *gin.Context) {
 		}
 	}
 
+	files := []string{"simpledocs/folder/folder.json"}
+
+	for _, file := range files {
+		err := createFilesContent(body.Name, name, file, ctx)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	ctx.JSON(http.StatusCreated, gin.H{"message": "Repository created successfully"})
+}
+
+func createFilesContent(repoName string, name string, file string, ctx *gin.Context) error {
+
+	// Prepare the request body for GitHub API
+	requestBody, err := json.Marshal(map[string]interface{}{
+		"message": "initial commit",
+		"content": "W10=", // Base64-encoded empty string for folder creation
+	})
+	if err != nil {
+		return err
+	}
+
+	// The URL should point to the desired folder path, using an empty file name to create the folder
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", name, repoName, file)
+
+	// Create a new HTTP request to GitHub API
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return err
+	}
+
+	// Set the Authorization header with the token from the request header
+	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the HTTP request to GitHub API
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Handle response from GitHub API
+	if resp.StatusCode != http.StatusCreated {
+		return errors.New("failed to create folder in repository")
+	}
+
+	return nil
 }
 
 func createRepoContents(repoName string, name string, folder string, ctx *gin.Context) error {
@@ -164,7 +213,7 @@ func GetProjects(ctx *gin.Context) {
 	}
 
 	// Query the database for projects
-	rows, err := initializer.DB.Query(ctx, `SELECT p.name 
+	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id
 		FROM projects p 
 		JOIN user_project_mapping up ON p.id = up.project_id 
 		WHERE up.user_id = $1;`, id)
@@ -175,14 +224,14 @@ func GetProjects(ctx *gin.Context) {
 	defer rows.Close()
 
 	// Collect project names
-	var projects []string
+	var projects []Project
 	for rows.Next() {
-		var projectName string
-		if err := rows.Scan(&projectName); err != nil {
+		var project Project
+		if err := rows.Scan(&project.Name, &project.Id); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan project name"})
 			return
 		}
-		projects = append(projects, projectName)
+		projects = append(projects, project)
 	}
 
 	// Check for any errors from the row iteration
@@ -193,7 +242,7 @@ func GetProjects(ctx *gin.Context) {
 
 	// check if name of project is present in repos and only send the required projects in api
 
-	var requiredProjects []map[string]interface{}
+	var requiredProjects []Project
 
 	for i := 0; i < len(projects); i++ {
 		for j := 0; j < len(repos); j++ {
@@ -207,14 +256,25 @@ func GetProjects(ctx *gin.Context) {
 
 			// Assert that the "name" key exists and is of type string
 			name, ok := repoMap["name"].(string)
-			if ok && name == projects[i] {
-				requiredProjects = append(requiredProjects, repoMap)
+			if ok && name == projects[i].Name {
+
+				var proj Project
+
+				proj.Id = projects[i].Id
+				proj.Name = projects[i].Name
+
+				requiredProjects = append(requiredProjects, proj)
 			}
 		}
 	}
 
 	ctx.JSON(http.StatusOK, requiredProjects)
 
+}
+
+type Project struct {
+	Name string
+	Id   uuid.UUID
 }
 
 type GitHubRepoResponse struct {

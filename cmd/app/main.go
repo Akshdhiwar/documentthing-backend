@@ -45,6 +45,9 @@ func main() {
 	//api route for project
 	api.ProjectRoutes(router.Group(baseRoute + "/project"))
 
+	//api routes for folder
+	api.FolderRoutes(router.Group(baseRoute + "/folder"))
+
 	// Run the server on port 3000
 	router.Run()
 
