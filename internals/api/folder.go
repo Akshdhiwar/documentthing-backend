@@ -10,4 +10,7 @@ func FolderRoutes(router *gin.RouterGroup) {
 	// GET Api to get folder of Repo from specified id
 	router.GET("/:id", controller.GetFolder)
 
+	// Update Folder
+	router.POST("/update", controller.UpdateFolder)
+
 }
