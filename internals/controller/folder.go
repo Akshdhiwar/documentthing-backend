@@ -26,9 +26,21 @@ func GetFolder(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName string
+	var projectName, repoName string
 
-	err = initializer.DB.QueryRow(context.Background(), "SELECT name FROM projects WHERE id= $1", projectID).Scan(&projectName)
+	err = initializer.DB.QueryRow(context.Background(), `
+	SELECT 
+	    u.github_name,
+	    p.name AS project_name
+	FROM 
+	    user_project_mapping upm
+	JOIN 
+	    users u ON upm.user_id = u.id
+	JOIN 
+	    projects p ON upm.project_id = p.id
+	WHERE 
+	    p.id = $1;
+	`, projectID).Scan(&repoName, &projectName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -36,7 +48,7 @@ func GetFolder(ctx *gin.Context) {
 		return
 	}
 
-	content, err := getFolderJsonFromGithub(ctx, projectName)
+	content, err := getFolderJsonFromGithub(ctx, projectName, repoName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -45,10 +57,10 @@ func GetFolder(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, content)
 }
 
-func getFolderJsonFromGithub(ctx *gin.Context, repoName string) (string, error) {
+func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", "Akshdhiwar", repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -201,7 +213,7 @@ func createFile(ctx *gin.Context, userName string, repoName string, fileId strin
 func updateFolderStructure(ctx *gin.Context, userName string, repoName string, content string) error {
 
 	// Get the latest SHA for the folder
-	sha, err := getFolderSHA(ctx, repoName)
+	sha, err := getFolderSHA(ctx, repoName, userName)
 	if err != nil {
 		return err
 	}
@@ -244,10 +256,10 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 	return nil
 }
 
-func getFolderSHA(ctx *gin.Context, repoName string) (string, error) {
+func getFolderSHA(ctx *gin.Context, repoName string, userName string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", "Akshdhiwar", repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
