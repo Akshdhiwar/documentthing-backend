@@ -48,6 +48,9 @@ func main() {
 	//api routes for folder
 	api.FolderRoutes(router.Group(baseRoute + "/folder"))
 
+	//api routes for files
+	api.FilesRoutes(router.Group(baseRoute + "/file"))
+
 	// Run the server on port 3000
 	router.Run()
 
