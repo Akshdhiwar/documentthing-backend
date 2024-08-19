@@ -12,4 +12,7 @@ func FilesRoutes(router *gin.RouterGroup) {
 
 	// PUT api to update file contents
 	router.PUT("/update", controller.UpdateFileContents)
+
+	// Delete api to delete the api routes
+	router.DELETE("", controller.DeleteFiles)
 }
