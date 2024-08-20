@@ -463,3 +463,126 @@ func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, f
 
 	return nil
 }
+
+func UpdateFileName(ctx *gin.Context) {
+	var body struct {
+		ProjectID string `json:"project_id"`
+		FileID    string `json:"file_id"`
+		Name      string `json:"name"`
+	}
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while binding body")
+		return
+	}
+
+	projectId, err := uuid.Parse(body.ProjectID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, "Error while parsing project id "+err.Error())
+		return
+	}
+
+	fileID, err := uuid.Parse(body.FileID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, "Error while parsing file id "+err.Error())
+		return
+	}
+
+	// getting details from DB
+	var projectName, userName string
+
+	err = initializer.DB.QueryRow(context.Background(), `
+	SELECT 
+	    u.github_name,
+	    p.name AS project_name
+	FROM 
+	    user_project_mapping upm
+	JOIN 
+	    users u ON upm.user_id = u.id
+	JOIN 
+	    projects p ON upm.project_id = p.id
+	WHERE 
+	    p.id = $1;
+	`, projectId).Scan(&userName, &projectName)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err)
+		return
+	}
+	// Step 1: Decode the Base64 string
+	jsonBytes, err := base64.StdEncoding.DecodeString(folderBase64)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	// Step 2: Unmarshal the JSON into a Go struct
+	var folder []models.Folder
+	if err := json.Unmarshal(jsonBytes, &folder); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	updatedFolder, err := updateFolderWithUpdatedFileName(folder, fileID, body.Name)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Check if updatedFolder is null, and if so, set it to an empty array
+	if updatedFolder == nil {
+		updatedFolder = []models.Folder{}
+	}
+
+	// Step 1: Marshal the JSON object to a JSON string
+	jsonBytes, err = json.Marshal(updatedFolder)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error While marshaling folder : " + err.Error(),
+		})
+		return
+	}
+
+	// Step 2: Encode the JSON string to Base64
+	base64String := base64.StdEncoding.EncodeToString(jsonBytes)
+
+	err = updateFolderStructure(ctx, userName, projectName, base64String)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, base64String)
+}
+
+func updateFolderWithUpdatedFileName(folders []models.Folder, fileID uuid.UUID, name string) ([]models.Folder, error) {
+	var updatedFolder []models.Folder
+
+	for _, folder := range folders {
+		if folder.FileID == fileID {
+			folder.Name = name
+		}
+		if len(folder.Children) > 0 {
+			updatedChild, err := updateFolderWithUpdatedFileName(folder.Children, fileID, name)
+			if err != nil {
+				return nil, fmt.Errorf("Error while updating the file name")
+			}
+			folder.Children = updatedChild
+		}
+
+		updatedFolder = append(updatedFolder, folder)
+	}
+	return updatedFolder, nil
+}

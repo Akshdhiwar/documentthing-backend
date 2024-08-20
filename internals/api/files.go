@@ -13,6 +13,9 @@ func FilesRoutes(router *gin.RouterGroup) {
 	// PUT api to update file contents
 	router.PUT("/update", controller.UpdateFileContents)
 
+	// PATCH api to update name of file
+	router.POST("/rename", controller.UpdateFileName)
+
 	// Delete api to delete the api routes
 	router.DELETE("", controller.DeleteFiles)
 }
