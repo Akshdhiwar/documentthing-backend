@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -206,7 +207,7 @@ func GetProjects(ctx *gin.Context) {
 		return
 	}
 
-	repos, err := getAllRepos(name, ctx)
+	repos, err := getAllRepos(ctx)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -246,20 +247,12 @@ func GetProjects(ctx *gin.Context) {
 
 	for i := 0; i < len(projects); i++ {
 		for j := 0; j < len(repos); j++ {
-			// Assert that repos[j] is a map[string]interface{}
-			repoMap, ok := repos[j].(map[string]interface{})
-			if !ok {
-				// Handle the case where the type assertion fails
-				fmt.Println("Type assertion failed for repo:", repos[j])
-				continue
-			}
+			// Access the repository directly since repos[j] is of type models.Repository
+			repo := repos[j]
 
-			// Assert that the "name" key exists and is of type string
-			name, ok := repoMap["name"].(string)
-			if ok && name == projects[i].Name {
-
+			// Compare the name directly, no need for type assertion
+			if repo.Name == projects[i].Name {
 				var proj Project
-
 				proj.Id = projects[i].Id
 				proj.Name = projects[i].Name
 
@@ -283,9 +276,9 @@ type GitHubRepoResponse struct {
 	Items             []interface{} `json:"items"`
 }
 
-func getAllRepos(name string, ctx *gin.Context) ([]interface{}, error) {
+func getAllRepos(ctx *gin.Context) ([]models.Repository, error) {
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/search/repositories?q=user:%s", name)
+	url := "https://api.github.com/user/repos" // Note: Use "user/repos" for authenticated user's repos
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -307,13 +300,13 @@ func getAllRepos(name string, ctx *gin.Context) ([]interface{}, error) {
 		return nil, fmt.Errorf("failed to get repository: %s", resp.Status)
 	}
 
-	// Decode the JSON response into a GitHubRepoResponse struct
-	var githubResp GitHubRepoResponse
+	// Decode the JSON response into a slice of Repository structs
+	var githubResp []models.Repository
 	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response body: %w", err)
 	}
 
-	return githubResp.Items, nil
+	return githubResp, nil
 }
 
 func createRepo(name string, ctx *gin.Context) error {
