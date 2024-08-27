@@ -26,12 +26,13 @@ func GetFolder(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName, repoName string
+	var projectName, repoName, orgName string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -40,7 +41,7 @@ func GetFolder(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectID).Scan(&repoName, &projectName)
+	`, projectID).Scan(&repoName, &projectName, &orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -48,7 +49,7 @@ func GetFolder(ctx *gin.Context) {
 		return
 	}
 
-	content, err := getFolderJsonFromGithub(ctx, projectName, repoName)
+	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -57,10 +58,15 @@ func GetFolder(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, content)
 }
 
-func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string) (string, error) {
+func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -133,12 +139,13 @@ func UpdateFolder(ctx *gin.Context) {
 		return
 	}
 
-	var userName, repoName string
+	var userName, repoName, org string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -147,7 +154,7 @@ func UpdateFolder(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectID).Scan(&userName, &repoName)
+	`, projectID).Scan(&userName, &repoName, &org)
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Error while query to DB :"+err.Error())
@@ -155,14 +162,14 @@ func UpdateFolder(ctx *gin.Context) {
 	}
 
 	// update folder structure
-	err = updateFolderStructure(ctx, userName, repoName, body.FolderObject)
+	err = updateFolderStructure(ctx, userName, repoName, body.FolderObject, org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
 	}
 
 	// creating file
-	err = createFile(ctx, userName, repoName, body.FileId)
+	err = createFile(ctx, userName, repoName, body.FileId, org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -172,11 +179,11 @@ func UpdateFolder(ctx *gin.Context) {
 
 }
 
-func createFile(ctx *gin.Context, userName string, repoName string, fileId string) error {
+func createFile(ctx *gin.Context, userName string, repoName string, fileId string, org string) error {
 	// Prepare the request body for GitHub API
 	requestBody, err := json.Marshal(map[string]interface{}{
 		"message": "created file " + fileId,
-		"content": "", // Base64-encoded empty string for folder creation
+		"content": "IntcIjNkNGIxN2QwLTlmODUtNDViOC1iOGI1LWM5M2M0MGFmNTE3ZlwiOntcImlkXCI6XCIzZDRiMTdkMC05Zjg1LTQ1YjgtYjhiNS1jOTNjNDBhZjUxN2ZcIixcInZhbHVlXCI6W3tcImNoaWxkcmVuXCI6W3tcInRleHRcIjpcImltcG9ydCB7IHBhc3Npb24sIHBlcnNldmVyYW5jZSB9IGZyb20gJ2xpZmUnO1xcblxcbndoaWxlICh0cnVlKSB7XFxuICAgIGRyZWFtKCk7XFxuICAgIGNvZGUoKTtcXG4gICAgaW1wcm92ZSgpO1xcbn1cIn1dLFwidHlwZVwiOlwiY29kZVwiLFwiaWRcIjpcIjJkMWI1OTIwLWZlNTAtNGJhNi05NTcwLTk5ZDk1ZjhhZDNjNlwiLFwicHJvcHNcIjp7XCJsYW5ndWFnZVwiOlwiSmF2YVNjcmlwdFwiLFwidGhlbWVcIjpcIlZTQ29kZVwiLFwibm9kZVR5cGVcIjpcInZvaWRcIn19XSxcInR5cGVcIjpcIkNvZGVcIixcIm1ldGFcIjp7XCJvcmRlclwiOjEsXCJkZXB0aFwiOjB9fSxcIjQ3ODNkYTg5LWY5NGItNDNjZS1iYzkwLTdiODNkYjJiMWMxNlwiOntcImlkXCI6XCI0NzgzZGE4OS1mOTRiLTQzY2UtYmM5MC03YjgzZGIyYjFjMTZcIixcInZhbHVlXCI6W3tcImlkXCI6XCJjZWFiZTdiMS00ZjE2LTQ0NWEtOWM0Yi1mMWExMWNiNWRiNWVcIixcInR5cGVcIjpcImhlYWRpbmctb25lXCIsXCJjaGlsZHJlblwiOlt7XCJ0ZXh0XCI6XCJIZWxsbyBuZXcgZmlsZSBjcmVhdGVkXCJ9XSxcInByb3BzXCI6e1wibm9kZVR5cGVcIjpcImJsb2NrXCJ9fV0sXCJ0eXBlXCI6XCJIZWFkaW5nT25lXCIsXCJtZXRhXCI6e1wib3JkZXJcIjowLFwiZGVwdGhcIjowfX0sXCI3YjJmYzhmZS02ZWUwLTQ4OTItODBkNC1mMjkyMzEzMjU3YTdcIjp7XCJpZFwiOlwiN2IyZmM4ZmUtNmVlMC00ODkyLTgwZDQtZjI5MjMxMzI1N2E3XCIsXCJ2YWx1ZVwiOlt7XCJpZFwiOlwiYjM3ZjZkYzYtMDg5NC00ZjlkLWI4NTEtMWI4YTY1NTUxMjQ3XCIsXCJ0eXBlXCI6XCJibG9ja3F1b3RlXCIsXCJjaGlsZHJlblwiOlt7XCJib2xkXCI6dHJ1ZSxcInRleHRcIjpcIi0gT3VyIGxpZmUgaXMgd2hhdCBvdXIgdGhvdWdodHMgbWFrZSBpdFwifSx7XCJ0ZXh0XCI6XCIgKGMpIE1hcmN1cyBBdXJlbGl1c1wifV0sXCJwcm9wc1wiOntcIm5vZGVUeXBlXCI6XCJibG9ja1wifX1dLFwidHlwZVwiOlwiQmxvY2txdW90ZVwiLFwibWV0YVwiOntcIm9yZGVyXCI6MixcImRlcHRoXCI6MH19LFwiNzZiMzQ5NGQtYzhmMy00OGVhLThhODAtMjA5YThiNzI2MzRiXCI6e1wiaWRcIjpcIjc2YjM0OTRkLWM4ZjMtNDhlYS04YTgwLTIwOWE4YjcyNjM0YlwiLFwidmFsdWVcIjpbe1wiaWRcIjpcIjM3NjZmMzU4LTEzMzQtNGQ1OC05NjhlLWNiMzU0NjI0NzMwMlwiLFwidHlwZVwiOlwicGFyYWdyYXBoXCIsXCJjaGlsZHJlblwiOlt7XCJ0ZXh0XCI6XCJcIn1dLFwicHJvcHNcIjp7XCJub2RlVHlwZVwiOlwiYmxvY2tcIn19XSxcInR5cGVcIjpcIlBhcmFncmFwaFwiLFwibWV0YVwiOntcIm9yZGVyXCI6MyxcImRlcHRoXCI6MH19LFwiZDYyODg2NGUtYTY2NS00NmVjLWExNDQtMmI5MzZiNDU4Zjk0XCI6e1wiaWRcIjpcImQ2Mjg4NjRlLWE2NjUtNDZlYy1hMTQ0LTJiOTM2YjQ1OGY5NFwiLFwidmFsdWVcIjpbe1wiaWRcIjpcIjMyZGVlZDdhLTRiYzMtNDk5Yy04ZGQ2LTg3NjdmYzVkZTRmNVwiLFwidHlwZVwiOlwicGFyYWdyYXBoXCIsXCJjaGlsZHJlblwiOlt7XCJ0ZXh0XCI6XCJcIn1dLFwicHJvcHNcIjp7XCJub2RlVHlwZVwiOlwiYmxvY2tcIn19XSxcInR5cGVcIjpcIlBhcmFncmFwaFwiLFwibWV0YVwiOntcIm9yZGVyXCI6NCxcImRlcHRoXCI6MH19fSI=", // Base64-encoded empty string for folder creation
 	})
 	if err != nil {
 		return err
@@ -184,6 +191,9 @@ func createFile(ctx *gin.Context, userName string, repoName string, fileId strin
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", userName, repoName, fileId)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileId)
+	}
 
 	// Create a new HTTP request to GitHub API
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
@@ -210,10 +220,10 @@ func createFile(ctx *gin.Context, userName string, repoName string, fileId strin
 	return nil
 }
 
-func updateFolderStructure(ctx *gin.Context, userName string, repoName string, content string) error {
+func updateFolderStructure(ctx *gin.Context, userName string, repoName string, content string, org string) error {
 
 	// Get the latest SHA for the folder
-	sha, err := getFolderSHA(ctx, repoName, userName)
+	sha, err := getFolderSHA(ctx, repoName, userName, org)
 	if err != nil {
 		return err
 	}
@@ -230,6 +240,9 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+	}
 
 	// Create a new HTTP request to GitHub API
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
@@ -256,10 +269,15 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 	return nil
 }
 
-func getFolderSHA(ctx *gin.Context, repoName string, userName string) (string, error) {
+func getFolderSHA(ctx *gin.Context, repoName string, userName string, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)

@@ -36,12 +36,13 @@ func GetFileContents(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName, userName string
+	var projectName, userName, org string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -50,7 +51,7 @@ func GetFileContents(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName)
+	`, projectId).Scan(&userName, &projectName, &org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -58,7 +59,7 @@ func GetFileContents(ctx *gin.Context) {
 		return
 	}
 
-	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID)
+	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -68,10 +69,14 @@ func GetFileContents(ctx *gin.Context) {
 
 }
 
-func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID) (string, error) {
+func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoAdmin, repoName, fileId)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileId)
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -128,12 +133,13 @@ func UpdateFileContents(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName, userName string
+	var projectName, userName, org string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -142,7 +148,7 @@ func UpdateFileContents(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName)
+	`, projectId).Scan(&userName, &projectName, &org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -150,7 +156,7 @@ func UpdateFileContents(ctx *gin.Context) {
 		return
 	}
 
-	err = saveContentIntoGithubFiles(ctx, fileID, projectName, userName, body.Content)
+	err = saveContentIntoGithubFiles(ctx, fileID, projectName, userName, body.Content, org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -160,9 +166,9 @@ func UpdateFileContents(ctx *gin.Context) {
 
 }
 
-func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName string, repoAdmin string, content string) error {
+func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName string, repoAdmin string, content string, org string) error {
 
-	sha, err := getFileSha(ctx, repoName, repoAdmin, fileID)
+	sha, err := getFileSha(ctx, repoName, repoAdmin, fileID, org)
 	if err != nil {
 		return fmt.Errorf("failed to get sha of file: %w", err)
 	}
@@ -179,6 +185,11 @@ func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName str
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoAdmin, repoName, fileID)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+	}
+
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -203,10 +214,15 @@ func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName str
 	return nil
 }
 
-func getFileSha(ctx *gin.Context, repoName string, userName string, fileID uuid.UUID) (string, error) {
+func getFileSha(ctx *gin.Context, repoName string, userName string, fileID uuid.UUID, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", userName, repoName, fileID)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -264,12 +280,13 @@ func DeleteFiles(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName, userName string
+	var projectName, userName, orgName string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -278,7 +295,7 @@ func DeleteFiles(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName)
+	`, projectId).Scan(&userName, &projectName, &orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -286,7 +303,7 @@ func DeleteFiles(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName)
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -309,7 +326,7 @@ func DeleteFiles(ctx *gin.Context) {
 		return
 	}
 
-	updatedFolder, err := deleteFolderContents(ctx, folder, projectName, userName, fileID)
+	updatedFolder, err := deleteFolderContents(ctx, folder, projectName, userName, fileID, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error While deleting files : " + err.Error(),
@@ -334,7 +351,7 @@ func DeleteFiles(ctx *gin.Context) {
 	// Step 2: Encode the JSON string to Base64
 	base64String := base64.StdEncoding.EncodeToString(jsonBytes)
 
-	err = updateFolderStructure(ctx, userName, projectName, base64String)
+	err = updateFolderStructure(ctx, userName, projectName, base64String, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -344,9 +361,9 @@ func DeleteFiles(ctx *gin.Context) {
 
 }
 
-func deleteFolderContents(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string, fileID uuid.UUID) ([]models.Folder, error) {
+func deleteFolderContents(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string, fileID uuid.UUID, org string) ([]models.Folder, error) {
 
-	err := recusrsive(ctx, folders, repoName, repoOwner, fileID)
+	err := recusrsive(ctx, folders, repoName, repoOwner, fileID, org)
 	if err != nil {
 		return nil, err
 	}
@@ -386,22 +403,22 @@ func removeDeletedFolder(folders []models.Folder, fileID uuid.UUID) ([]models.Fo
 	return updatedFolder, nil
 }
 
-func recusrsive(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string, fileID uuid.UUID) error {
+func recusrsive(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string, fileID uuid.UUID, org string) error {
 	for _, folder := range folders {
 		if len(folder.Children) > 0 {
-			err := recusrsive(ctx, folder.Children, repoName, repoOwner, fileID)
+			err := recusrsive(ctx, folder.Children, repoName, repoOwner, fileID, org)
 			if err != nil {
 				return fmt.Errorf("failed to delete child files: %w", err)
 			}
 		}
 		if folder.FileID == fileID {
 			if len(folder.Children) > 0 {
-				err := recDeleteFile(ctx, folder.Children, repoName, repoOwner)
+				err := recDeleteFile(ctx, folder.Children, repoName, repoOwner, org)
 				if err != nil {
 					return fmt.Errorf("failed to delete child files: %w", err)
 				}
 			}
-			if err := deleteFileFromGithub(ctx, repoName, repoOwner, fileID); err != nil {
+			if err := deleteFileFromGithub(ctx, repoName, repoOwner, fileID, org); err != nil {
 				return err
 			}
 		}
@@ -410,12 +427,12 @@ func recusrsive(ctx *gin.Context, folders []models.Folder, repoName string, repo
 	return nil
 }
 
-func recDeleteFile(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string) error {
+func recDeleteFile(ctx *gin.Context, folders []models.Folder, repoName string, repoOwner string, org string) error {
 	for _, folder := range folders {
 		if len(folder.Children) > 0 {
-			recDeleteFile(ctx, folder.Children, repoName, repoOwner)
+			recDeleteFile(ctx, folder.Children, repoName, repoOwner, org)
 		}
-		err := deleteFileFromGithub(ctx, repoName, repoOwner, folder.FileID)
+		err := deleteFileFromGithub(ctx, repoName, repoOwner, folder.FileID, org)
 		if err != nil {
 			return err
 		}
@@ -423,8 +440,8 @@ func recDeleteFile(ctx *gin.Context, folders []models.Folder, repoName string, r
 	return nil
 }
 
-func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, fileID uuid.UUID) error {
-	sha, err := getFileSha(ctx, repoName, repoOwner, fileID)
+func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, fileID uuid.UUID, org string) error {
+	sha, err := getFileSha(ctx, repoName, repoOwner, fileID, org)
 	if err != nil {
 		return fmt.Errorf("failed to get sha of file: %w", err)
 	}
@@ -440,6 +457,11 @@ func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, f
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoOwner, repoName, fileID)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+	}
+
 	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
@@ -490,12 +512,13 @@ func UpdateFileName(ctx *gin.Context) {
 	}
 
 	// getting details from DB
-	var projectName, userName string
+	var projectName, userName, orgName string
 
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
-	    p.name AS project_name
+	    p.name AS project_name,
+		 COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -504,7 +527,7 @@ func UpdateFileName(ctx *gin.Context) {
 	    projects p ON upm.project_id = p.id
 	WHERE 
 	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName)
+	`, projectId).Scan(&userName, &projectName, &orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
@@ -512,7 +535,7 @@ func UpdateFileName(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName)
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -558,7 +581,7 @@ func UpdateFileName(ctx *gin.Context) {
 	// Step 2: Encode the JSON string to Base64
 	base64String := base64.StdEncoding.EncodeToString(jsonBytes)
 
-	err = updateFolderStructure(ctx, userName, projectName, base64String)
+	err = updateFolderStructure(ctx, userName, projectName, base64String, orgName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return

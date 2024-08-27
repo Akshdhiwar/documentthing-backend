@@ -18,6 +18,7 @@ func CreateNewProject(ctx *gin.Context) {
 	var body struct {
 		Name string `json:"name"`
 		ID   string `json:"id"`
+		Org  string `json:"org"`
 	}
 
 	// Bind JSON input to the body variable
@@ -26,8 +27,13 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
+	if body.Name == "" {
+		ctx.JSON(http.StatusBadRequest, "Please provide name to create a project")
+		return
+	}
+
 	// now creating repo in github
-	err := createRepo(body.Name, ctx)
+	repo, err := createRepo(body.Name, ctx, body.Org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 	}
@@ -62,7 +68,7 @@ func CreateNewProject(ctx *gin.Context) {
 
 	var projectID uuid.UUID
 
-	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner) values ($1, $2) RETURNING id`, body.Name, body.ID).Scan(&projectID)
+	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner , org , repo_owner) values ($1, $2 , $3 , $4) RETURNING id`, body.Name, body.ID, body.Org, repo.Owner.Login).Scan(&projectID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB" + err.Error(),
@@ -91,7 +97,7 @@ func CreateNewProject(ctx *gin.Context) {
 	folders := []string{"markdown", "html", "plaintext", "simpledocs", "simpledocs/files"}
 
 	for _, folder := range folders {
-		err := createRepoContents(body.Name, name, folder, ctx)
+		err := createRepoContents(body.Name, name, folder, ctx, body.Org)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -101,7 +107,7 @@ func CreateNewProject(ctx *gin.Context) {
 	files := []string{"simpledocs/folder/folder.json"}
 
 	for _, file := range files {
-		err := createFilesContent(body.Name, name, file, ctx)
+		err := createFilesContent(body.Name, name, file, ctx, body.Org)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -111,7 +117,7 @@ func CreateNewProject(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, gin.H{"message": "Repository created successfully"})
 }
 
-func createFilesContent(repoName string, name string, file string, ctx *gin.Context) error {
+func createFilesContent(repoName string, name string, file string, ctx *gin.Context, org string) error {
 
 	// Prepare the request body for GitHub API
 	requestBody, err := json.Marshal(map[string]interface{}{
@@ -124,6 +130,9 @@ func createFilesContent(repoName string, name string, file string, ctx *gin.Cont
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", name, repoName, file)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", org, repoName, file)
+	}
 
 	// Create a new HTTP request to GitHub API
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
@@ -150,7 +159,7 @@ func createFilesContent(repoName string, name string, file string, ctx *gin.Cont
 	return nil
 }
 
-func createRepoContents(repoName string, name string, folder string, ctx *gin.Context) error {
+func createRepoContents(repoName string, name string, folder string, ctx *gin.Context, org string) error {
 
 	// Prepare the request body for GitHub API
 	requestBody, err := json.Marshal(map[string]interface{}{
@@ -163,6 +172,9 @@ func createRepoContents(repoName string, name string, folder string, ctx *gin.Co
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s/.gitkeep", name, repoName, folder)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s/.gitkeep", org, repoName, folder)
+	}
 
 	// Create a new HTTP request to GitHub API
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
@@ -214,7 +226,7 @@ func GetProjects(ctx *gin.Context) {
 	}
 
 	// Query the database for projects
-	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id
+	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner
 		FROM projects p 
 		JOIN user_project_mapping up ON p.id = up.project_id 
 		WHERE up.user_id = $1;`, id)
@@ -228,7 +240,7 @@ func GetProjects(ctx *gin.Context) {
 	var projects []Project
 	for rows.Next() {
 		var project Project
-		if err := rows.Scan(&project.Name, &project.Id); err != nil {
+		if err := rows.Scan(&project.Name, &project.Id, &project.RepoOwner); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan project name"})
 			return
 		}
@@ -251,7 +263,7 @@ func GetProjects(ctx *gin.Context) {
 			repo := repos[j]
 
 			// Compare the name directly, no need for type assertion
-			if repo.Name == projects[i].Name {
+			if repo.Name == projects[i].Name && repo.Owner.Login == projects[i].RepoOwner {
 				var proj Project
 				proj.Id = projects[i].Id
 				proj.Name = projects[i].Name
@@ -266,8 +278,9 @@ func GetProjects(ctx *gin.Context) {
 }
 
 type Project struct {
-	Name string
-	Id   uuid.UUID
+	Name      string
+	Id        uuid.UUID
+	RepoOwner string
 }
 
 type GitHubRepoResponse struct {
@@ -309,20 +322,25 @@ func getAllRepos(ctx *gin.Context) ([]models.Repository, error) {
 	return githubResp, nil
 }
 
-func createRepo(name string, ctx *gin.Context) error {
+func createRepo(name string, ctx *gin.Context, org string) (models.Repository, error) {
 	// Prepare the request body for GitHub API
 	requestBody, err := json.Marshal(map[string]string{
 		"name":    name,
 		"private": "true",
 	})
 	if err != nil {
-		return err
+		return models.Repository{}, err
+	}
+
+	url := "https://api.github.com/user/repos"
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/orgs/%s/repos", org)
 	}
 
 	// Create a new HTTP request to GitHub API
-	req, err := http.NewRequest("POST", "https://api.github.com/user/repos", bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
-		return err
+		return models.Repository{}, err
 	}
 
 	// Set the Authorization header with the token from the request header
@@ -332,16 +350,22 @@ func createRepo(name string, ctx *gin.Context) error {
 	// Make the HTTP request to GitHub API
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return models.Repository{}, err
 	}
 	defer resp.Body.Close()
 
 	// Handle response from GitHub API
 	if resp.StatusCode != http.StatusCreated {
-		return errors.New("failed to create repository")
+		return models.Repository{}, errors.New("failed to create repository")
 	}
 
-	return nil
+	// Decode the JSON response into a slice of Repository structs
+	var githubResp models.Repository
+	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+		return models.Repository{}, fmt.Errorf("failed to decode response body: %w", err)
+	}
+
+	return githubResp, nil
 }
 
 func deleteRepo(name string, ctx *gin.Context) error {

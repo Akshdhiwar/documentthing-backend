@@ -51,6 +51,9 @@ func main() {
 	//api routes for files
 	api.FilesRoutes(router.Group(baseRoute + "/file"))
 
+	// api routes for organization
+	api.OrgRoutes(router.Group(baseRoute + "/orgs"))
+
 	// Run the server on port 3000
 	router.Run()
 
