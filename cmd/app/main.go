@@ -54,6 +54,9 @@ func main() {
 	// api routes for organization
 	api.OrgRoutes(router.Group(baseRoute + "/orgs"))
 
+	// api routes for members
+	api.MemberRoutes(router.Group(baseRoute + "/member"))
+
 	// Run the server on port 3000
 	router.Run()
 
