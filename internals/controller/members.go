@@ -10,6 +10,7 @@ import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func GetOrgMembers(ctx *gin.Context) {
@@ -165,4 +166,118 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, error, 
 type SubMember struct {
 	Name   string
 	Avatar string
+}
+
+func GetUserDetails(ctx *gin.Context) {
+
+	userName := ctx.Param("name")
+	id := ctx.Param("proj")
+
+	projectID, err := uuid.Parse(id)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, "Error while parsing the uuid")
+		return
+	}
+
+	if userName == "" {
+		ctx.JSON(http.StatusBadRequest, "No params sent in url")
+		return
+	}
+
+	user, err := getUserDetailsFormGithub(ctx, userName)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = initializer.DB.QueryRow(context.Background(), `
+    SELECT 
+        upm.role
+    FROM 
+        user_project_mapping upm
+    JOIN 
+        users u ON upm.user_id = u.id
+    WHERE 
+        upm.project_id = $1
+        AND u.github_name = $2;
+	`, projectID, userName).Scan(&user.Role)
+
+	var tempUser struct {
+		Name       *string `json:"name"`
+		Avatar     string  `json:"avatar"`
+		GithubName string  `json:"githubName"`
+		Email      *string `json:"email"`
+		Twitter    *string `json:"twitter"`
+		Role       string  `json:"role"`
+		Company    string  `json:"company"`
+		IsActive   *string `json:"isActive"`
+		ID         int     `json:"id"`
+	}
+
+	tempUser.Name = user.Name
+	tempUser.Avatar = user.AvatarURL
+	tempUser.GithubName = user.Login
+	tempUser.Email = user.Email
+	tempUser.Twitter = user.TwitterUsername
+	tempUser.Role = user.Role
+	// Set IsActive field based on the Role
+	if user.Role != "" {
+		activeStatus := "In Project"
+		tempUser.IsActive = &activeStatus
+	} else {
+		tempUser.IsActive = nil
+	}
+	tempUser.ID = user.ID
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			ctx.JSON(http.StatusOK, tempUser)
+			return
+		} else {
+			ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Error executing query: %v", err))
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, tempUser)
+
+}
+
+func getUserDetailsFormGithub(ctx *gin.Context, name string) (models.ExtendedGitHubUser, error) {
+	var githubResp models.GitHubUser
+
+	// Create a new HTTP request to GitHub API
+	url := fmt.Sprintf("https://api.github.com/users/%s", name)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return models.ExtendedGitHubUser{}, fmt.Errorf("failed to create new HTTP request: %w", err)
+	}
+
+	// Set the Authorization header with the token from the request header
+	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the HTTP request to GitHub API
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return models.ExtendedGitHubUser{}, fmt.Errorf("failed to make HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle response from GitHub API
+	if resp.StatusCode != http.StatusOK {
+		return models.ExtendedGitHubUser{}, fmt.Errorf("failed to get members for this org: %s", resp.Status)
+	}
+
+	// Decode the JSON response into a GitHubRepoResponse struct
+
+	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+		return models.ExtendedGitHubUser{}, fmt.Errorf("failed to decode response body: %w", err)
+	}
+
+	return models.ExtendedGitHubUser{
+		GitHubUser: githubResp,
+		Role:       "",
+	}, nil
 }
