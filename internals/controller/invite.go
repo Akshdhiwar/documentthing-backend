@@ -125,7 +125,7 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
-	_, err = tx.Exec(context.Background(), `UPDATE invite SET deleted_at = $1 WHERE id = $2`, time.Now(), claims.Subject)
+	_, err = tx.Exec(context.Background(), `UPDATE invite SET deleted_at = $1 , is_accepted = true WHERE id = $2`, time.Now(), claims.Subject)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB: " + err.Error(),
