@@ -36,6 +36,7 @@ func CreateNewProject(ctx *gin.Context) {
 	repo, err := createRepo(body.Name, ctx, body.Org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	// now saving the details in DB
@@ -356,7 +357,7 @@ func createRepo(name string, ctx *gin.Context, org string) (models.Repository, e
 
 	// Handle response from GitHub API
 	if resp.StatusCode != http.StatusCreated {
-		return models.Repository{}, errors.New("failed to create repository")
+		return models.Repository{}, fmt.Errorf("failed to create repository")
 	}
 
 	// Decode the JSON response into a slice of Repository structs

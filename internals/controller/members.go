@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -159,6 +160,8 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, error, 
 		members = append(members, temp)
 	}
 
+	getOrganizationMembersEmails(ctx, org)
+
 	// Return the content and SHA in a map
 	return members, nil, 0
 }
@@ -280,4 +283,60 @@ func getUserDetailsFormGithub(ctx *gin.Context, name string) (models.ExtendedGit
 		GitHubUser: githubResp,
 		Role:       "",
 	}, nil
+}
+
+func getOrganizationMembersEmails(ctx *gin.Context, orgName string) {
+	query := fmt.Sprintf(`
+		query {
+			organization(login: "%s") {
+				membersWithRole(first: 100) {
+					edges {
+						node {
+							login
+							email
+						}
+					}
+				}
+			}
+		}
+	`, orgName)
+
+	reqBody := map[string]string{"query": query}
+	reqBodyBytes, _ := json.Marshal(reqBody)
+
+	req, _ := http.NewRequest("POST", "https://api.github.com/graphql", bytes.NewBuffer(reqBodyBytes))
+	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Error:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var graphqlResp struct {
+		Data struct {
+			Organization struct {
+				MembersWithRole struct {
+					Edges []struct {
+						Node struct {
+							Login string `json:"login"`
+							Email string `json:"email"`
+						} `json:"node"`
+					} `json:"edges"`
+				} `json:"membersWithRole"`
+			} `json:"organization"`
+		}
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&graphqlResp); err != nil {
+		fmt.Println("Error decoding response:", err)
+		return
+	}
+
+	for _, edge := range graphqlResp.Data.Organization.MembersWithRole.Edges {
+		fmt.Printf("Login: %s, Email: %s\n", edge.Node.Login, edge.Node.Email)
+	}
 }

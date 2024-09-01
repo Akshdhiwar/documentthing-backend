@@ -57,4 +57,19 @@ func Migrations() {
 	if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
+
+	// Create the invite table
+	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS invite (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		invited_at TIMESTAMPTZ DEFAULT now(),
+		deleted_at TIMESTAMPTZ,
+		user_name TEXT NOT NULL,
+		email TEXT NOT NULL,
+		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE
+	)`)
+
+	if err != nil {
+		log.Fatalf("Failed to execute migration: %v", err)
+	}
+
 }
