@@ -31,6 +31,36 @@ func CreateInvite(ctx *gin.Context) {
 		return
 	}
 
+	var inviteExists bool
+
+	err = initializer.DB.QueryRow(context.Background(), `
+    SELECT
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM invite
+                WHERE 
+                    user_name = $1
+                    AND project_id = $2
+                    AND deleted_at IS NULL
+                    AND is_accepted IS FALSE
+                    AND is_revoked IS FALSE
+            ) 
+            THEN TRUE
+            ELSE FALSE
+        END AS invite_exists;
+	`, body.GithubName, body.ProjectID).Scan(&inviteExists)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while retriving invite data from Database")
+		return
+	}
+
+	if inviteExists {
+		ctx.JSON(http.StatusOK, "User already invited to this project")
+		return
+	}
+
 	// create a record in invite table
 	var id uuid.UUID
 	initializer.DB.QueryRow(context.Background(), `

@@ -31,7 +31,7 @@ func GetOrgMembers(ctx *gin.Context) {
 		return
 	}
 
-	memebers, err, code := getAllMembersFormGithub(ctx, org)
+	memebers, code, err := getAllMembersFormGithub(ctx, org)
 	if err != nil {
 
 		status := 500
@@ -120,13 +120,13 @@ func GetOrgMembers(ctx *gin.Context) {
 
 }
 
-func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, error, int) {
+func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, int, error) {
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/orgs/%s/members", org)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new HTTP request: %w", err), 0
+		return nil, 0, fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
 	// Set the Authorization header with the token from the request header
@@ -136,19 +136,19 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, error, 
 	// Make the HTTP request to GitHub API
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make HTTP request: %w", err), 0
+		return nil, 0, fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Handle response from GitHub API
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get members for this org: %s", resp.Status), resp.StatusCode
+		return nil, resp.StatusCode, fmt.Errorf("failed to get members for this org: %s", resp.Status)
 	}
 
 	// Decode the JSON response into a GitHubRepoResponse struct
 	var githubResp []models.Member
 	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w", err), 0
+		return nil, 0, fmt.Errorf("failed to decode response body: %w", err)
 	}
 
 	var members []SubMember
@@ -163,7 +163,7 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, error, 
 	getOrganizationMembersEmails(ctx, org)
 
 	// Return the content and SHA in a map
-	return members, nil, 0
+	return members, 0, nil
 }
 
 type SubMember struct {
@@ -205,6 +205,41 @@ func GetUserDetails(ctx *gin.Context) {
         AND u.github_name = $2;
 	`, projectID, userName).Scan(&user.Role)
 
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			user.Role = "" // Assign empty string if no row is found
+			err = nil      // Reset the error since it's handled
+		} else {
+			ctx.JSON(http.StatusInternalServerError, "Error while retriving data from Database")
+			return
+		}
+	}
+
+	var inviteExists bool
+
+	err = initializer.DB.QueryRow(context.Background(), `
+    SELECT
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM invite
+                WHERE 
+                    user_name = $1
+                    AND project_id = $2
+                    AND deleted_at IS NULL
+                    AND is_accepted IS FALSE
+                    AND is_revoked IS FALSE
+            ) 
+            THEN TRUE
+            ELSE FALSE
+        END AS invite_exists;
+	`, userName, projectID).Scan(&inviteExists)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while retriving invite data from Database")
+		return
+	}
+
 	var tempUser struct {
 		Name       *string `json:"name"`
 		Avatar     string  `json:"avatar"`
@@ -229,6 +264,11 @@ func GetUserDetails(ctx *gin.Context) {
 		tempUser.IsActive = &activeStatus
 	} else {
 		tempUser.IsActive = nil
+	}
+
+	if user.Role == "" && inviteExists {
+		activeStatus := "Invite has been sent. You can make another invite after 48hr from invitation time."
+		tempUser.IsActive = &activeStatus
 	}
 	tempUser.ID = user.ID
 

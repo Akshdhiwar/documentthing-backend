@@ -2,12 +2,15 @@ package main
 
 import (
 	"os"
+	"time"
 
 	"github.com/Akshdhiwar/simpledocs-backend/database"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/api"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/go-co-op/gocron"
 )
 
 func init() {
@@ -21,9 +24,16 @@ func init() {
 func main() {
 	// Create a new Gin router
 	router := gin.Default()
+	// Create a new scheduler in the local time zone
+	scheduler := gocron.NewScheduler(time.Local)
+
+	// You can also set it to run every hour, or any other interval
+	scheduler.Every(1).Hour().Do(utils.DeleteExpiredInvites)
+
+	// Start the scheduler in blocking mode
+	scheduler.StartAsync()
 
 	// router.Use(utils.Cors())
-
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
