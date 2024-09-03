@@ -65,9 +65,10 @@ func Migrations() {
 		deleted_at TIMESTAMPTZ,
 		user_name TEXT NOT NULL,
 		email TEXT NOT NULL,
-		project_id UUID NOT NULL REFERENCES projects(id),
+		project_id UUID NOT NULL,
 		is_accepted BOOLEAN DEFAULT FALSE,
-		is_revoked BOOLEAN DEFAULT FALSE
+		is_revoked BOOLEAN DEFAULT FALSE,
+		role TEXT NOT NULL
 	)`)
 
 	if err != nil {

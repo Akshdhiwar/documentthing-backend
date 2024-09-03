@@ -18,6 +18,7 @@ func CreateInvite(ctx *gin.Context) {
 		GithubName string `json:"github_name"`
 		Email      string `json:"email"`
 		ProjectID  string `json:"project_id"`
+		Role       string `json:"role"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -64,13 +65,14 @@ func CreateInvite(ctx *gin.Context) {
 	// create a record in invite table
 	var id uuid.UUID
 	initializer.DB.QueryRow(context.Background(), `
-		INSERT INTO invite (email , user_name , project_id) VALUES ($1, $2, $3) RETURNING id
-	`, body.Email, body.GithubName, body.ProjectID).Scan(&id)
+		INSERT INTO invite (email , user_name , project_id , role) VALUES ($1, $2, $3 , $4) RETURNING id
+	`, body.Email, body.GithubName, body.ProjectID, body.Role).Scan(&id)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"githubName": body.GithubName,
 		"email":      body.Email,
 		"projectID":  body.ProjectID,
+		"role":       body.Role,
 		"sub":        id,
 		"exp":        time.Now().Add(time.Hour * 48).Unix(),
 	})
@@ -147,7 +149,7 @@ func AcceptInvite(ctx *gin.Context) {
 		}
 	}()
 
-	_, err = tx.Exec(context.Background(), `INSERT INTO user_project_mapping (user_id, project_id) VALUES ($1, $2)`, body.ID, claims.ProjectID)
+	_, err = tx.Exec(context.Background(), `INSERT INTO user_project_mapping (user_id, project_id , role) VALUES ($1, $2 , $3)`, body.ID, claims.ProjectID, claims.Role)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB: " + err.Error(),
@@ -170,6 +172,7 @@ type Claims struct {
 	GithubName string `json:"githubName"`
 	Email      string `json:"email"`
 	ProjectID  string `json:"projectID"`
+	Role       string `json:"role"`
 	jwt.RegisteredClaims
 }
 

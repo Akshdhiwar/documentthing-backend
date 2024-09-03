@@ -3,12 +3,14 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -122,30 +124,32 @@ type Links struct {
 
 func UpdateFolder(ctx *gin.Context) {
 	var body struct {
-		FolderObject string `json:"folder_object"`
-		ID           string `json:"id"`
-		FileId       string `json:"file_id"`
+		ID       string        `json:"id"`
+		ParentID string        `json:"parentID"`
+		Folder   models.Folder `json:"folder"`
 	}
 
-	err := ctx.ShouldBindJSON(&body)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while binding data")
+	// Bind JSON request body to struct
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request payload: " + err.Error()})
 		return
 	}
 
+	// Parse project ID as UUID
 	projectID, err := uuid.Parse(body.ID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while parsing project ID")
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid project ID format: " + err.Error()})
 		return
 	}
 
 	var userName, repoName, org string
 
+	// Query database for project and user information
 	err = initializer.DB.QueryRow(context.Background(), `
 	SELECT 
 	    u.github_name,
 	    p.name AS project_name,
-		 COALESCE(p.org, '') AS project_org
+	    COALESCE(p.org, '') AS project_org
 	FROM 
 	    user_project_mapping upm
 	JOIN 
@@ -157,26 +161,81 @@ func UpdateFolder(ctx *gin.Context) {
 	`, projectID).Scan(&userName, &repoName, &org)
 
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while query to DB :"+err.Error())
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error querying the database: " + err.Error()})
 		return
 	}
 
-	// update folder structure
-	err = updateFolderStructure(ctx, userName, repoName, body.FolderObject, org)
+	// Retrieve folder structure from GitHub
+	folderBase64, err := getFolderJsonFromGithub(ctx, repoName, userName, org)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error retrieving folder structure from GitHub: " + err.Error()})
 		return
 	}
 
-	// creating file
-	err = createFile(ctx, userName, repoName, body.FileId, org)
+	// Decode Base64 folder structure
+	jsonBytes, err := base64.StdEncoding.DecodeString(folderBase64)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error decoding folder structure: " + err.Error()})
 		return
 	}
 
-	ctx.JSON(http.StatusCreated, "Folder Updated successfully")
+	// Unmarshal JSON into Go struct
+	var folders []models.Folder
+	if err := json.Unmarshal(jsonBytes, &folders); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error unmarshaling folder structure: " + err.Error()})
+		return
+	}
 
+	// Update folder structure based on parentID
+	if body.ParentID == "" {
+		folders = append(folders, models.Folder{ID: body.Folder.ID, Children: body.Folder.Children, Name: body.Folder.Name})
+	} else {
+		folders = recursiveAddFileInFolder(folders, body.ParentID, body.Folder)
+	}
+
+	// Marshal updated folder structure back to JSON
+	jsonBytes, err = json.Marshal(folders)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error marshaling updated folder structure: " + err.Error()})
+		return
+	}
+
+	// Encode JSON string to Base64
+	base64String := base64.StdEncoding.EncodeToString(jsonBytes)
+
+	// Update folder structure on GitHub
+	if err := updateFolderStructure(ctx, userName, repoName, base64String, org); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error updating folder structure on GitHub: " + err.Error()})
+		return
+	}
+
+	// Create a new file
+	if err := createFile(ctx, userName, repoName, body.Folder.ID.String(), org); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error creating file on GitHub: " + err.Error()})
+		return
+	}
+
+	// Respond with the updated folder structure
+	ctx.JSON(http.StatusCreated, folders)
+}
+
+// Recursive function to add a file into the correct folder
+func recursiveAddFileInFolder(folders []models.Folder, parentID string, file models.Folder) []models.Folder {
+	var updatedFolders []models.Folder
+
+	for _, folder := range folders {
+		if folder.ID.String() == parentID {
+			// Add file to the children of the matched folder
+			folder.Children = append(folder.Children, models.Folder{ID: file.ID, Children: file.Children, Name: file.Name})
+		}
+		// Recursively update children folders
+		if len(folder.Children) > 0 {
+			folder.Children = recursiveAddFileInFolder(folder.Children, parentID, file)
+		}
+		updatedFolders = append(updatedFolders, folder)
+	}
+
+	return updatedFolders
 }
 
 func createFile(ctx *gin.Context, userName string, repoName string, fileId string, org string) error {

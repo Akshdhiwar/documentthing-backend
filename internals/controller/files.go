@@ -380,7 +380,7 @@ func removeDeletedFolder(folders []models.Folder, fileID uuid.UUID) ([]models.Fo
 	var updatedFolder []models.Folder
 	flag := false
 	for _, folder := range folders {
-		if folder.FileID == fileID {
+		if folder.ID == fileID {
 			flag = true
 			continue
 		}
@@ -411,7 +411,7 @@ func recusrsive(ctx *gin.Context, folders []models.Folder, repoName string, repo
 				return fmt.Errorf("failed to delete child files: %w", err)
 			}
 		}
-		if folder.FileID == fileID {
+		if folder.ID == fileID {
 			if len(folder.Children) > 0 {
 				err := recDeleteFile(ctx, folder.Children, repoName, repoOwner, org)
 				if err != nil {
@@ -432,7 +432,7 @@ func recDeleteFile(ctx *gin.Context, folders []models.Folder, repoName string, r
 		if len(folder.Children) > 0 {
 			recDeleteFile(ctx, folder.Children, repoName, repoOwner, org)
 		}
-		err := deleteFileFromGithub(ctx, repoName, repoOwner, folder.FileID, org)
+		err := deleteFileFromGithub(ctx, repoName, repoOwner, folder.ID, org)
 		if err != nil {
 			return err
 		}
@@ -594,7 +594,7 @@ func updateFolderWithUpdatedFileName(folders []models.Folder, fileID uuid.UUID, 
 	var updatedFolder []models.Folder
 
 	for _, folder := range folders {
-		if folder.FileID == fileID {
+		if folder.ID == fileID {
 			folder.Name = name
 		}
 		if len(folder.Children) > 0 {
