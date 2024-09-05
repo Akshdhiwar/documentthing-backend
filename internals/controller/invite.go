@@ -77,7 +77,7 @@ func CreateInvite(ctx *gin.Context) {
 		"exp":        time.Now().Add(time.Hour * 48).Unix(),
 	})
 
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWTSECRET")))
+	tokenString, err := token.SignedString([]byte(os.Getenv("JWTSECRET_INVITE")))
 
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -109,7 +109,7 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
-	claims, err := parseJWTToken(body.Token, []byte(os.Getenv("JWTSECRET")))
+	claims, err := parseJWTToken(body.Token, []byte(os.Getenv("JWTSECRET_INVITE")))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Error while parsing JWT token")
 		return

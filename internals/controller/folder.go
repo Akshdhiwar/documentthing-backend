@@ -11,6 +11,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -74,8 +75,13 @@ func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string,
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return "", err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -259,9 +265,13 @@ func createFile(ctx *gin.Context, userName string, repoName string, fileId strin
 	if err != nil {
 		return err
 	}
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
 
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -309,8 +319,13 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 		return err
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -342,8 +357,13 @@ func getFolderSHA(ctx *gin.Context, repoName string, userName string, org string
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return "", err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API

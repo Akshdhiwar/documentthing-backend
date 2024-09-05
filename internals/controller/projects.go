@@ -10,6 +10,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -141,8 +142,13 @@ func createFilesContent(repoName string, name string, file string, ctx *gin.Cont
 		return err
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -183,8 +189,13 @@ func createRepoContents(repoName string, name string, folder string, ctx *gin.Co
 		return err
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -298,8 +309,13 @@ func getAllRepos(ctx *gin.Context) ([]models.Repository, error) {
 		return nil, fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -344,8 +360,13 @@ func createRepo(name string, ctx *gin.Context, org string) (models.Repository, e
 		return models.Repository{}, err
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return models.Repository{}, err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -384,8 +405,13 @@ func deleteRepo(name string, ctx *gin.Context) error {
 		return err
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API

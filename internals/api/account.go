@@ -11,6 +11,6 @@ func AccountRoutes(router *gin.RouterGroup) {
 	router.POST("/get-access-token", controller.GetAccessTokenFromGithub)
 
 	// GET Api to get the user details which requires a github access token in Authorization headers
-	router.GET("/user-details", controller.GetUserDetailsFromGithub)
+	router.GET("/user-details", controller.GetUserDetailsFromGithubFromApi)
 
 }

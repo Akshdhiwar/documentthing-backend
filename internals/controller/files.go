@@ -10,6 +10,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -82,8 +83,13 @@ func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin strin
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return "", err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -195,8 +201,13 @@ func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName str
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -228,8 +239,13 @@ func getFileSha(ctx *gin.Context, repoName string, userName string, fileID uuid.
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return "", err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -467,8 +483,13 @@ func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, f
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API

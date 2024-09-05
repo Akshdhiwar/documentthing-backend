@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,9 +27,13 @@ func getOrgs(ctx *gin.Context) ([]models.Organization, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API

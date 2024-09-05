@@ -9,6 +9,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -129,8 +130,13 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, int, er
 		return nil, 0, fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -297,8 +303,13 @@ func getUserDetailsFormGithub(ctx *gin.Context, name string) (models.ExtendedGit
 		return models.ExtendedGitHubUser{}, fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return models.ExtendedGitHubUser{}, err
+	}
+
 	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	// Make the HTTP request to GitHub API
@@ -345,7 +356,13 @@ func getOrganizationMembersEmails(ctx *gin.Context, orgName string) {
 	reqBodyBytes, _ := json.Marshal(reqBody)
 
 	req, _ := http.NewRequest("POST", "https://api.github.com/graphql", bytes.NewBuffer(reqBodyBytes))
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return
+	}
+
+	// Set the Authorization header with the token from the request header
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
