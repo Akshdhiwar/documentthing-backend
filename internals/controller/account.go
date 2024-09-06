@@ -17,6 +17,7 @@ import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/markbates/goth/gothic"
 )
 
 func GetAccessTokenFromGithub(ctx *gin.Context) {
@@ -358,4 +359,46 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		"userDetails": user,
 	})
 
+}
+
+func Callback(ctx *gin.Context) {
+
+	provider := ctx.Param("provider")
+
+	// Add provider to the request's context
+	newCtx := context.WithValue(ctx.Request.Context(), "provider", provider)
+	ctx.Request = ctx.Request.WithContext(newCtx)
+
+	user, err := gothic.CompleteUserAuth(ctx.Writer, ctx.Request)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	fmt.Println(user)
+
+	ctx.Redirect(http.StatusOK, "http://localhost:5173/login")
+}
+
+func Logout(ctx *gin.Context) {
+	provider := ctx.Param("provider")
+	// Add provider to the request's context
+	newCtx := context.WithValue(ctx.Request.Context(), "provider", provider)
+	ctx.Request = ctx.Request.WithContext(newCtx)
+	gothic.Logout(ctx.Writer, ctx.Request)
+	ctx.Redirect(http.StatusTemporaryRedirect, "/")
+}
+
+func Auth(ctx *gin.Context) {
+	provider := ctx.Param("provider")
+	// Add provider to the request's context
+	newCtx := context.WithValue(ctx.Request.Context(), "provider", provider)
+	ctx.Request = ctx.Request.WithContext(newCtx)
+	// try to get the user without re-authenticating
+	gothUser, err := gothic.CompleteUserAuth(ctx.Writer, ctx.Request)
+	if err != nil {
+		gothic.BeginAuthHandler(ctx.Writer, ctx.Request)
+	}
+
+	fmt.Println(gothUser)
 }

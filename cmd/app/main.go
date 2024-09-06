@@ -6,6 +6,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/database"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/api"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/auth"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-contrib/cors"
@@ -19,6 +20,7 @@ func init() {
 	}
 	initializer.ConnectToDB()
 	database.Migrations()
+	auth.Auth()
 }
 
 func main() {

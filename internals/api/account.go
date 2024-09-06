@@ -13,4 +13,13 @@ func AccountRoutes(router *gin.RouterGroup) {
 	// GET Api to get the user details which requires a github access token in Authorization headers
 	router.GET("/user-details", controller.GetUserDetailsFromGithubFromApi)
 
+	// GET Api for callback
+	router.GET("/auth/:provider/callback", controller.Callback)
+
+	// GET Api for callback
+	router.GET("/logout/:provider", controller.Callback)
+
+	// GET Api for callback
+	router.GET("/auth/:provider", controller.Auth)
+
 }
