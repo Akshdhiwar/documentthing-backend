@@ -377,7 +377,7 @@ func Callback(ctx *gin.Context) {
 
 	fmt.Println(user)
 
-	ctx.Redirect(http.StatusOK, "http://localhost:5173/login")
+	ctx.Redirect(http.StatusPermanentRedirect, "http://localhost:5173/login")
 }
 
 func Logout(ctx *gin.Context) {
@@ -397,7 +397,13 @@ func Auth(ctx *gin.Context) {
 	// try to get the user without re-authenticating
 	gothUser, err := gothic.CompleteUserAuth(ctx.Writer, ctx.Request)
 	if err != nil {
-		gothic.BeginAuthHandler(ctx.Writer, ctx.Request)
+		url, err := gothic.GetAuthURL(ctx.Writer, ctx.Request)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Error getting auth")
+			return
+		}
+
+		ctx.JSON(http.StatusOK, url)
 	}
 
 	fmt.Println(gothUser)

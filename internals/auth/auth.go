@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	key    = ""         // Replace with your SESSION_SECRET or similar
-	maxAge = 86400 * 30 // 30 days
-	isProd = false      // Set to true when serving over https
+	key    = "SESSION_SECRET" // Replace with your SESSION_SECRET or similar
+	maxAge = 86400 * 30       // 30 days
+	isProd = false            // Set to true when serving over https
 )
 
 func Auth() {
@@ -29,6 +29,6 @@ func Auth() {
 	gothic.Store = store
 
 	goth.UseProviders(
-		google.New(googleClientID, googleClientSecret, "http://localhost:5173/login"),
+		google.New(googleClientID, googleClientSecret, "http://localhost:3000/api/v1/account/auth/google/callback"),
 	)
 }
