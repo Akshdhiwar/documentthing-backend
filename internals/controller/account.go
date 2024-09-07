@@ -22,7 +22,6 @@ import (
 func GetAccessTokenFromGithub(ctx *gin.Context) {
 
 	// body creation to get code from payload
-
 	var body struct {
 		Code string `json:"code"`
 	}
@@ -63,10 +62,10 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		"githubName": userDetails.GithubName,
 		"email":      userDetails.Email,
 		"sub":        userDetails.ID,
-		"exp":        time.Now().Add(time.Hour).Unix(),
+		"exp":        time.Now().Add(time.Second * 24).Unix(),
 	})
 
-	accessToken, err := userAccessToken.SignedString([]byte(os.Getenv("JWTSECRET_INVITE")))
+	accessToken, err := userAccessToken.SignedString([]byte(os.Getenv("JWTSECRET_ACCESS")))
 
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -76,10 +75,39 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
+	userRefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"githubName": userDetails.GithubName,
+		"email":      userDetails.Email,
+		"sub":        userDetails.ID,
+		"exp":        time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days
+	})
+
+	refreshToken, err := userRefreshToken.SignedString([]byte(os.Getenv("JWTSECRET_REFRESH")))
+
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "Error creating refresh token",
+		})
+
+		return
+	}
+
+	ctx.SetSameSite(http.SameSiteLaxMode)
+
 	ctx.SetCookie(
 		"betterDocsAT", // Cookie name
 		accessToken,    // Cookie value
 		3600*24,        // MaxAge: 1 day in seconds
+		"/",            // Path
+		"",             // Domain (leave empty for default)
+		true,           // Secure (true if using HTTPS)
+		true,           // HttpOnly (prevents JavaScript access)
+	)
+
+	ctx.SetCookie(
+		"betterDocsRT", // Cookie name
+		refreshToken,   // Cookie value
+		86400*30,       // MaxAge: 1 day in seconds
 		"/",            // Path
 		"",             // Domain (leave empty for default)
 		true,           // Secure (true if using HTTPS)
@@ -255,8 +283,14 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		return
 	}
 
-	// Set the Authorization header with the access token
-	req.Header.Set("Authorization", ctx.GetHeader("Authorization"))
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while getting details from DB")
+		return
+	}
+
+	// Set the Authorization header with the token from the request header
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	// Send the request
 	resp, err := http.DefaultClient.Do(req)

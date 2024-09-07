@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/controller"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -11,6 +12,6 @@ func AccountRoutes(router *gin.RouterGroup) {
 	router.POST("/get-access-token", controller.GetAccessTokenFromGithub)
 
 	// GET Api to get the user details which requires a github access token in Authorization headers
-	router.GET("/user-details", controller.GetUserDetailsFromGithubFromApi)
+	router.GET("/user-details", middleware.AuthMiddleware, controller.GetUserDetailsFromGithubFromApi)
 
 }
