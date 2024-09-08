@@ -34,7 +34,7 @@ func AuthMiddleware(ctx *gin.Context) {
 	// Handle errors in token parsing
 	if err != nil {
 		if err.Error() == "token has invalid claims: token is expired" {
-			GenerateNewAccessToken(ctx)
+			generateNewAccessToken(ctx)
 			ctx.Next()
 			return
 		}
@@ -50,7 +50,7 @@ func AuthMiddleware(ctx *gin.Context) {
 		// Store the claims in the context
 		ctx.Set("claims", claims)
 	} else {
-		GenerateNewAccessToken(ctx)
+		generateNewAccessToken(ctx)
 		ctx.Next()
 		return
 	}
@@ -59,7 +59,7 @@ func AuthMiddleware(ctx *gin.Context) {
 	ctx.Next()
 }
 
-func GenerateNewAccessToken(ctx *gin.Context) {
+func generateNewAccessToken(ctx *gin.Context) {
 	// Extract the token from the cookie
 	tokenString, err := ctx.Cookie("betterDocsRT")
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 
 func MemberRoutes(router *gin.RouterGroup) {
 
-	router.Use(middleware.AuthMiddleware)
+	router.Use(middleware.AuthMiddleware, middleware.RoleMiddleware)
 
 	// GET api to list all the github members
 	router.GET("/org/:id", controller.GetOrgMembers)
