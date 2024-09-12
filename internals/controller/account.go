@@ -32,6 +32,7 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 	}
 
 	token, err := getAccessToken(body.Code)
+	fmt.Println(token)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -212,6 +213,8 @@ func getAccessToken(code string) (string, error) {
 		clientSecret = os.Getenv("RAILS_GITHUB_APP_SECRET_PROD")
 	}
 
+	fmt.Println(clientID, clientSecret)
+
 	// Set up the request body as JSON
 	requestBodyMap := map[string]string{
 		"client_id":     clientID,
@@ -253,6 +256,8 @@ func getAccessToken(code string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
+
+	fmt.Println(tokenResponse)
 
 	return tokenResponse.AccessToken, nil
 }
