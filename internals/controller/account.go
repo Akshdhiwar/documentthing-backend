@@ -92,7 +92,7 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
-	ctx.SetSameSite(http.SameSiteLaxMode)
+	ctx.SetSameSite(http.SameSiteStrictMode)
 
 	ctx.SetCookie(
 		"betterDocsAT", // Cookie name
