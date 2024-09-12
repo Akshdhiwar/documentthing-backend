@@ -213,7 +213,9 @@ func getAccessToken(code string) (string, error) {
 		clientSecret = os.Getenv("RAILS_GITHUB_APP_SECRET_PROD")
 	}
 
-	fmt.Println(clientID, clientSecret)
+	if clientID == "" || clientSecret == "" {
+		return "", fmt.Errorf("missing client ID or secret")
+	}
 
 	// Set up the request body as JSON
 	requestBodyMap := map[string]string{
@@ -245,8 +247,12 @@ func getAccessToken(code string) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	// Read and parse the response body
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -257,7 +263,12 @@ func getAccessToken(code string) (string, error) {
 		return "", fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 
-	fmt.Println(tokenResponse)
+	if tokenResponse.AccessToken == "" {
+		return "", fmt.Errorf("access token not found in response")
+	}
+
+	// Log the token response for debugging (use a logging framework in production)
+	fmt.Printf("Token Response: %+v\n", tokenResponse)
 
 	return tokenResponse.AccessToken, nil
 }
