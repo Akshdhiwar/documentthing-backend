@@ -13,7 +13,7 @@ type Users struct {
 	Company    string
 	Email      string
 	Twitter    string
-	GithubID   int
+	GithubID   int64
 	GithubName string
 	Name       string
 }

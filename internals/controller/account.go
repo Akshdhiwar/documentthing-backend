@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -143,30 +142,17 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 		return models.Users{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	var userDetails map[string]interface{}
+	var userDetails GitHubUser
 	if err := json.Unmarshal(body, &userDetails); err != nil {
 		return models.Users{}, fmt.Errorf("error while unmarshalling: %w", err)
 	}
 
 	// Check for status code 400
-	if resp.StatusCode == 400 {
-		if message, exists := userDetails["message"].(string); exists {
-			return models.Users{}, fmt.Errorf("bad request: %s", message)
-		}
+	if resp.StatusCode != http.StatusOK {
 		return models.Users{}, fmt.Errorf("bad request")
 	}
 
-	// Extract and convert the GitHub ID
-	var githubID int
-
-	switch id := userDetails["id"].(type) {
-	case float64:
-		githubID = int(id)
-	case int:
-		githubID = id
-	default:
-		return models.Users{}, errors.New("GitHub ID is not a valid number")
-	}
+	githubID := userDetails.ID
 
 	// Check if user exists in the database
 	var exists bool
@@ -180,25 +166,13 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 	// If the user does not exist, insert a new record
 	if !exists {
 		// Populate user fields from GitHub response
-		if avatarURL, ok := userDetails["avatar_url"].(string); ok {
-			user.AvatarURL = avatarURL
-		}
-		if company, ok := userDetails["company"].(string); ok {
-			user.Company = company
-		}
-		if email, ok := userDetails["email"].(string); ok {
-			user.Email = email
-		}
-		if twitter, ok := userDetails["twitter_username"].(string); ok {
-			user.Twitter = twitter
-		}
-		user.GithubID = githubID
-		if githubName, ok := userDetails["login"].(string); ok {
-			user.GithubName = githubName
-		}
-		if name, ok := userDetails["name"].(string); ok {
-			user.Name = name
-		}
+		user.AvatarURL = userDetails.AvatarURL
+		user.Company = userDetails.Company
+		user.Email = userDetails.Email
+		user.Twitter = userDetails.TwitterUsername
+		user.GithubID = userDetails.ID
+		user.GithubName = userDetails.Login
+		user.Name = userDetails.Name
 
 		// Insert the new user into the database
 		err := initializer.DB.QueryRow(context.Background(),
@@ -317,7 +291,7 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, "Failed to read response body:"+err.Error())
 	}
 
-	var userDetails map[string]interface{}
+	var userDetails GitHubUser
 
 	err = json.Unmarshal(body, &userDetails)
 	if err != nil {
@@ -325,17 +299,7 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		return
 	}
 
-	// Check if the status is 400 and handle it
-	if resp.StatusCode == 400 {
-		if message, exists := userDetails["message"].(string); exists {
-			ctx.JSON(400, message)
-		} else {
-			ctx.JSON(400, "Bad request")
-		}
-		return
-	}
-
-	id := userDetails["id"].(float64)
+	id := userDetails.ID
 
 	var exists bool
 	err = initializer.DB.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)", id).Scan(&exists)
@@ -351,25 +315,13 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 
 	if !exists {
 
-		if avatarURL, ok := userDetails["avatar_url"].(string); ok {
-			user.AvatarURL = avatarURL
-		}
-		if company, ok := userDetails["company"].(string); ok {
-			user.Company = company
-		}
-		if email, ok := userDetails["email"].(string); ok {
-			user.Email = email
-		}
-		if twitter, ok := userDetails["twitter_username"].(string); ok {
-			user.Twitter = twitter
-		}
-		user.GithubID = int(id)
-		if githubName, ok := userDetails["login"].(string); ok {
-			user.GithubName = githubName
-		}
-		if name, ok := userDetails["name"].(string); ok {
-			user.Name = name
-		}
+		user.AvatarURL = userDetails.AvatarURL
+		user.Company = userDetails.Company
+		user.Email = userDetails.Email
+		user.Twitter = userDetails.TwitterUsername
+		user.GithubID = userDetails.ID
+		user.GithubName = userDetails.Login
+		user.Name = userDetails.Name
 
 		err := initializer.DB.QueryRow(context.Background(),
 			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name)
@@ -403,4 +355,56 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		"userDetails": user,
 	})
 
+}
+
+// GitHubUser represents a GitHub user with nil values handled as empty strings
+type GitHubUser struct {
+	AvatarURL               string     `json:"avatar_url"`
+	Bio                     string     `json:"bio"`
+	Blog                    string     `json:"blog"`
+	Collaborators           int        `json:"collaborators"`
+	Company                 string     `json:"company"`
+	CreatedAt               string     `json:"created_at"`
+	DiskUsage               int        `json:"disk_usage"`
+	Email                   string     `json:"email"`
+	EventsURL               string     `json:"events_url"`
+	Followers               int        `json:"followers"`
+	FollowersURL            string     `json:"followers_url"`
+	Following               int        `json:"following"`
+	FollowingURL            string     `json:"following_url"`
+	GistsURL                string     `json:"gists_url"`
+	GravatarID              string     `json:"gravatar_id"`
+	Hireable                string     `json:"hireable"`
+	HTMLURL                 string     `json:"html_url"`
+	ID                      int64      `json:"id"`
+	Location                string     `json:"location"`
+	Login                   string     `json:"login"`
+	Name                    string     `json:"name"`
+	NodeID                  string     `json:"node_id"`
+	NotificationEmail       string     `json:"notification_email"`
+	OrganizationsURL        string     `json:"organizations_url"`
+	OwnedPrivateRepos       int        `json:"owned_private_repos"`
+	Plan                    GitHubPlan `json:"plan"`
+	PrivateGists            int        `json:"private_gists"`
+	PublicGists             int        `json:"public_gists"`
+	PublicRepos             int        `json:"public_repos"`
+	ReceivedEventsURL       string     `json:"received_events_url"`
+	ReposURL                string     `json:"repos_url"`
+	SiteAdmin               bool       `json:"site_admin"`
+	StarredURL              string     `json:"starred_url"`
+	SubscriptionsURL        string     `json:"subscriptions_url"`
+	TotalPrivateRepos       int        `json:"total_private_repos"`
+	TwitterUsername         string     `json:"twitter_username"`
+	TwoFactorAuthentication bool       `json:"two_factor_authentication"`
+	Type                    string     `json:"type"`
+	UpdatedAt               string     `json:"updated_at"`
+	URL                     string     `json:"url"`
+}
+
+// GitHubPlan represents the plan details within a GitHub user response
+type GitHubPlan struct {
+	Collaborators int    `json:"collaborators"`
+	Name          string `json:"name"`
+	PrivateRepos  int    `json:"private_repos"`
+	Space         int64  `json:"space"`
 }
