@@ -139,6 +139,9 @@ func GetUserDetailsFromGithub(ctx context.Context, token string) (models.Users, 
 	}
 	defer resp.Body.Close()
 
+	fmt.Println(resp.StatusCode)
+	fmt.Println(resp)
+
 	// Check for non-200 status codes early
 	if resp.StatusCode != http.StatusOK {
 		return models.Users{}, fmt.Errorf("GitHub API request failed with status: %d", resp.StatusCode)
