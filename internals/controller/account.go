@@ -148,6 +148,8 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 	}
 
 	// Check for status code 400
+
+	fmt.Println(resp.StatusCode, token)
 	if resp.StatusCode != http.StatusOK {
 		return models.Users{}, fmt.Errorf("bad request")
 	}
