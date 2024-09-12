@@ -15,19 +15,19 @@ var DB *pgxpool.Pool
 func ConnectToDB() {
 	var dbUser string
 
-	if os.Getenv("RAILS_ENVIRONMENT") == "LOCAL" {
-		dbUser = os.Getenv("RAILS_DATABASE_USER")
-	} else {
-		dbUser = os.Getenv("RAILS_DATABASE_USER_PROD")
-	}
+	// if os.Getenv("RAILS_ENVIRONMENT") == "LOCAL" {
+	dbUser = os.Getenv("RAILS_DATABASE_USER")
+	// } else {
+	// dbUser = os.Getenv("RAILS_DATABASE_USER_PROD")
+	// }
 
 	var dbPassword string
 
-	if os.Getenv("RAILS_ENVIRONMENT") == "LOCAL" {
-		dbPassword = os.Getenv("RAILS_DATABASE_PASSWORD")
-	} else {
-		dbPassword = os.Getenv("RAILS_DATABASE_PASSWORD_PROD")
-	}
+	// if os.Getenv("RAILS_ENVIRONMENT") == "LOCAL" {
+	dbPassword = os.Getenv("RAILS_DATABASE_PASSWORD")
+	// } else {
+	// dbPassword = os.Getenv("RAILS_DATABASE_PASSWORD_PROD")
+	// }
 	dbName := os.Getenv("RAILS_DATABASE_NAME")
 	dbHost := os.Getenv("RAILS_DATABASE_HOST")
 	dbPort := os.Getenv("RAILS_DATABASE_PORT")
