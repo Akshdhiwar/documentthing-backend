@@ -48,6 +48,15 @@ func main() {
 	//default route
 	api.Default(router.Group(baseRoute))
 
+	// Handle preflight OPTIONS requests
+	router.OPTIONS("/*path", func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "https://simpledocs.vercel.app")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
+		c.Header("Access-Control-Allow-Headers", "X-User-Id, X-Project-Id, Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.AbortWithStatus(204)
+	})
+
 	// api route for Signup and Login
 	api.AccountRoutes(router.Group(baseRoute + "/account"))
 
