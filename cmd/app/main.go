@@ -35,12 +35,13 @@ func main() {
 
 	// router.Use(utils.Cors())
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "https://simpledocs.vercel.app/"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
-		AllowHeaders:     []string{"Authorization", "Content-Type", "X-User-Id", "X-Project-Id"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+    AllowOrigins:     []string{"http://localhost:5173", "https://simpledocs.vercel.app"}, // Remove trailing slash
+    AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, // Include OPTIONS method
+    AllowHeaders:     []string{"Authorization", "Content-Type", "X-User-Id", "X-Project-Id"},
+    ExposeHeaders:    []string{"Content-Length"},
+    AllowCredentials: true,
+}))
+
 
 	baseRoute := "api/v1"
 
