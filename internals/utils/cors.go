@@ -7,10 +7,9 @@ import (
 
 func Cors() gin.HandlerFunc {
 	config := cors.DefaultConfig()
-	// config.AllowOrigins = []string{"http://localhost:5173", "https://simpledocs.vercel.app"} // List specific origins
-	config.AllowOrigins = []string{"*"}                            // List specific origins
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE"} // Allow specific methods
-	config.AllowHeaders = []string{"X-User-Id", "X-Project-Id"}    // Include custom headers
-	config.AllowCredentials = true                                 // Allow credentials (cookies/authorization headers)
+	config.AllowOrigins = []string{"http://localhost:5173", "https://simpledocs.vercel.app"}     // List specific origins
+	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE"}                               // Allow specific methods
+	config.AllowHeaders = []string{"X-User-Id", "X-Project-Id", "Content-Type", "Authorization"} // Include custom headers
+	config.AllowCredentials = true                                                               // Allow credentials (cookies/authorization headers)
 	return cors.New(config)
 }
