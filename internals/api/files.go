@@ -2,13 +2,13 @@ package api
 
 import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/controller"
-	"github.com/Akshdhiwar/simpledocs-backend/internals/middleware"
+	// "github.com/Akshdhiwar/simpledocs-backend/internals/middleware"
 	"github.com/gin-gonic/gin"
 )
 
 func FilesRoutes(router *gin.RouterGroup) {
 
-	router.Use(middleware.AuthMiddleware)
+	// router.Use(middleware.AuthMiddleware)
 
 	// GET api to get file contents
 	router.GET("/get", controller.GetFileContents)
