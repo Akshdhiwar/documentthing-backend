@@ -8,7 +8,6 @@ import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/api"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/go-co-op/gocron"
 )
@@ -33,14 +32,7 @@ func main() {
 	// Start the scheduler in blocking mode
 	scheduler.StartAsync()
 
-	// router.Use(utils.Cors())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"https://simpledocs.vercel.app", "http://localhost:5173"}, // Remove trailing slash
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},                // Include OPTIONS method
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
-
+	router.Use(utils.Cors())
 	baseRoute := "api/v1"
 
 	defer initializer.DB.Close()
