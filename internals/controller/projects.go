@@ -17,9 +17,10 @@ import (
 
 func CreateNewProject(ctx *gin.Context) {
 	var body struct {
-		Name string `json:"name"`
-		ID   string `json:"id"`
-		Org  string `json:"org"`
+		Name  string `json:"name"`
+		ID    string `json:"id"`
+		Org   string `json:"org"`
+		Owner string `json:"owner"`
 	}
 
 	// Bind JSON input to the body variable
@@ -34,11 +35,11 @@ func CreateNewProject(ctx *gin.Context) {
 	}
 
 	// now creating repo in github
-	repo, err := createRepo(body.Name, ctx, body.Org)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err.Error())
-		return
-	}
+	// repo, err := createRepo(body.Name, ctx, body.Org)
+	// if err != nil {
+	// 	ctx.JSON(http.StatusInternalServerError, err.Error())
+	// 	return
+	// }
 
 	// now saving the details in DB
 	userId, err := uuid.Parse(body.ID)
@@ -70,7 +71,7 @@ func CreateNewProject(ctx *gin.Context) {
 
 	var projectID uuid.UUID
 
-	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner , org , repo_owner) values ($1, $2 , $3 , $4) RETURNING id`, body.Name, body.ID, body.Org, repo.Owner.Login).Scan(&projectID)
+	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner , org , repo_owner) values ($1, $2 , $3 , $4) RETURNING id`, body.Name, body.ID, body.Org, body.Owner).Scan(&projectID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB" + err.Error(),
@@ -429,4 +430,89 @@ func deleteRepo(name string, ctx *gin.Context) error {
 	}
 
 	return nil
+}
+
+func GetInstallation(ctx *gin.Context) {
+	// Define the GitHub API URL
+	url := "https://api.github.com/user/installations"
+
+	// Create a new HTTP request to GitHub API
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the access token from your utility function
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get access token"})
+		return
+	}
+
+	// Set the Authorization header with the Bearer token
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the HTTP request to GitHub API
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to make HTTP request"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Handle the response from GitHub API
+	if resp.StatusCode != http.StatusOK {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get installation, status code: %d", resp.StatusCode)})
+		return
+	}
+
+	// Decode the JSON response into an InstallationResponse struct
+	var githubResp models.InstallationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response body"})
+		return
+	}
+
+	// Create a custom response that filters out installation_id and login
+	type InstallationInfo struct {
+		InstallationID int    `json:"installation_id"`
+		Login          string `json:"name"`
+		Type           string `json:"type"`
+	}
+
+	var installationInfoList []InstallationInfo
+	for _, installation := range githubResp.Installations {
+		installationInfoList = append(installationInfoList, InstallationInfo{
+			InstallationID: installation.ID,
+			Login:          installation.Account.Login,
+			Type:           installation.Account.Type,
+		})
+	}
+
+	// Return the filtered data as JSON
+	ctx.JSON(http.StatusOK, installationInfoList)
+}
+
+func GetAccessTokenForGithubAppInstallation(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Installation ID is required"})
+		return
+	}
+
+	appToken, err := utils.GenerateJWT()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate App JWT token"})
+		return
+	}
+
+	installationAccessToken, err := utils.GetInstallationAccessToken(id, appToken)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get installation access token"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, installationAccessToken)
 }

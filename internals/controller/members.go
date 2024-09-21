@@ -152,7 +152,7 @@ func getAllMembersFormGithub(ctx *gin.Context, org string) ([]SubMember, int, er
 	}
 
 	// Decode the JSON response into a GitHubRepoResponse struct
-	var githubResp []models.Member
+	var githubResp []models.Account
 	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
 		return nil, 0, fmt.Errorf("failed to decode response body: %w", err)
 	}

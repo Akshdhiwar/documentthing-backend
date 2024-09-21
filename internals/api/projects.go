@@ -15,4 +15,10 @@ func ProjectRoutes(router *gin.RouterGroup) {
 
 	// GET route to get the user projects
 	router.GET("/get-project", controller.GetProjects)
+
+	// GET route to get the installation accounts
+	router.GET("/installation", controller.GetInstallation)
+
+	// POST route to get access token for github installation
+	router.POST("/installation/access_token/:id", controller.GetAccessTokenForGithubAppInstallation)
 }
