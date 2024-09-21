@@ -1,31 +1,14 @@
 package models
 
+import "time"
+
 type Repository struct {
-	ID       int    `json:"id"`
-	NodeID   string `json:"node_id"`
-	Name     string `json:"name"`
-	FullName string `json:"full_name"`
-	Private  bool   `json:"private"`
-	Owner    struct {
-		Login             string `json:"login"`
-		ID                int    `json:"id"`
-		NodeID            string `json:"node_id"`
-		AvatarURL         string `json:"avatar_url"`
-		GravatarID        string `json:"gravatar_id"`
-		URL               string `json:"url"`
-		HTMLURL           string `json:"html_url"`
-		FollowersURL      string `json:"followers_url"`
-		FollowingURL      string `json:"following_url"`
-		GistsURL          string `json:"gists_url"`
-		StarredURL        string `json:"starred_url"`
-		SubscriptionsURL  string `json:"subscriptions_url"`
-		OrganizationsURL  string `json:"organizations_url"`
-		ReposURL          string `json:"repos_url"`
-		EventsURL         string `json:"events_url"`
-		ReceivedEventsURL string `json:"received_events_url"`
-		Type              string `json:"type"`
-		SiteAdmin         bool   `json:"site_admin"`
-	} `json:"owner"`
+	ID               int     `json:"id"`
+	NodeID           string  `json:"node_id"`
+	Name             string  `json:"name"`
+	FullName         string  `json:"full_name"`
+	Private          bool    `json:"private"`
+	Owner            Account `json:"owner"`
 	HTMLURL          string  `json:"html_url"`
 	Description      *string `json:"description"`
 	Fork             bool    `json:"fork"`
@@ -129,27 +112,6 @@ type Organization struct {
 	Description      *string `json:"description"` // Using a pointer for optional fields
 }
 
-type Member struct {
-	Login             string `json:"login"`
-	ID                int    `json:"id"`
-	NodeID            string `json:"node_id"`
-	AvatarURL         string `json:"avatar_url"`
-	GravatarID        string `json:"gravatar_id"`
-	URL               string `json:"url"`
-	HTMLURL           string `json:"html_url"`
-	FollowersURL      string `json:"followers_url"`
-	FollowingURL      string `json:"following_url"`
-	GistsURL          string `json:"gists_url"`
-	StarredURL        string `json:"starred_url"`
-	SubscriptionsURL  string `json:"subscriptions_url"`
-	OrganizationsURL  string `json:"organizations_url"`
-	ReposURL          string `json:"repos_url"`
-	EventsURL         string `json:"events_url"`
-	ReceivedEventsURL string `json:"received_events_url"`
-	Type              string `json:"type"`
-	SiteAdmin         bool   `json:"site_admin"`
-}
-
 type GitHubUser struct {
 	Login             string  `json:"login"`
 	ID                int     `json:"id"`
@@ -188,4 +150,64 @@ type GitHubUser struct {
 type ExtendedGitHubUser struct {
 	GitHubUser        // Embedding the base GitHubUser model
 	Role       string `json:"role"` // Additional field
+}
+
+// InstallationResponse represents the top-level response containing total_count and installations.
+type InstallationResponse struct {
+	TotalCount    int            `json:"total_count"`
+	Installations []Installation `json:"installations"`
+}
+
+// Installation represents the details of each installation.
+type Installation struct {
+	ID                     int         `json:"id"`
+	ClientID               string      `json:"client_id"`
+	Account                Account     `json:"account"`
+	RepositorySelection    string      `json:"repository_selection"`
+	AccessTokensURL        string      `json:"access_tokens_url"`
+	RepositoriesURL        string      `json:"repositories_url"`
+	HTMLURL                string      `json:"html_url"`
+	AppID                  int         `json:"app_id"`
+	AppSlug                string      `json:"app_slug"`
+	TargetID               int         `json:"target_id"`
+	TargetType             string      `json:"target_type"`
+	Permissions            Permissions `json:"permissions"`
+	Events                 []string    `json:"events"`
+	CreatedAt              time.Time   `json:"created_at"`
+	UpdatedAt              time.Time   `json:"updated_at"`
+	SingleFileName         *string     `json:"single_file_name"`
+	HasMultipleSingleFiles bool        `json:"has_multiple_single_files"`
+	SingleFilePaths        []string    `json:"single_file_paths"`
+	SuspendedBy            *string     `json:"suspended_by"`
+	SuspendedAt            *time.Time  `json:"suspended_at"`
+}
+
+// Account represents the account information in the installation.
+type Account struct {
+	Login             string `json:"login"`
+	ID                int    `json:"id"`
+	NodeID            string `json:"node_id"`
+	AvatarURL         string `json:"avatar_url"`
+	GravatarID        string `json:"gravatar_id"`
+	URL               string `json:"url"`
+	HTMLURL           string `json:"html_url"`
+	FollowersURL      string `json:"followers_url"`
+	FollowingURL      string `json:"following_url"`
+	GistsURL          string `json:"gists_url"`
+	StarredURL        string `json:"starred_url"`
+	SubscriptionsURL  string `json:"subscriptions_url"`
+	OrganizationsURL  string `json:"organizations_url"`
+	ReposURL          string `json:"repos_url"`
+	EventsURL         string `json:"events_url"`
+	ReceivedEventsURL string `json:"received_events_url"`
+	Type              string `json:"type"`
+	SiteAdmin         bool   `json:"site_admin"`
+}
+
+// Permissions represents the permissions for the installation.
+type Permissions struct {
+	Contents       string `json:"contents"`
+	Metadata       string `json:"metadata"`
+	Administration string `json:"administration"`
+	Members        string `json:"members,omitempty"` // Optional, for organization target
 }
