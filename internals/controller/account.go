@@ -205,13 +205,8 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 
 func getAccessToken(code string) (string, error) {
 	var clientID, clientSecret string
-	if os.Getenv("RAILS_ENVIRONMENT") == "LOCAL" {
-		clientID = os.Getenv("GITHUB_APP_CLIENT")
-		clientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
-	} else {
-		clientID = os.Getenv("RAILS_GITHUB_APP_ID_PROD")
-		clientSecret = os.Getenv("RAILS_GITHUB_APP_SECRET_PROD")
-	}
+	clientID = os.Getenv("GITHUB_APP_CLIENT")
+	clientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
 
 	if clientID == "" || clientSecret == "" {
 		return "", fmt.Errorf("missing client ID or secret")
