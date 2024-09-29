@@ -70,6 +70,9 @@ func main() {
 	// api route for invites
 	api.InviteRoutes(router.Group(baseRoute + "/invite"))
 
+	// api route for commit and save the changes
+	api.CommitRoutes(router.Group(baseRoute + "/commit"))
+
 	// Run the server on port 3000
 	router.Run()
 

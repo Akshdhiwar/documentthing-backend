@@ -125,7 +125,7 @@ func createFilesContent(repoName string, name string, file string, ctx *gin.Cont
 	// Prepare the request body for GitHub API
 	requestBody, err := json.Marshal(map[string]interface{}{
 		"message": "initial commit",
-		"content": "W10=", // Base64-encoded empty string for folder creation
+		"content": "IltdIg==", // Base64-encoded empty string for folder creation
 	})
 	if err != nil {
 		return err
