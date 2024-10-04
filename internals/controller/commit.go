@@ -196,25 +196,42 @@ func getLatestTreeShaForCommit(ctx *gin.Context, repoName string, userName strin
 
 func createNewTreeForCommit(ctx *gin.Context, repoName string, userName string, org string, latestTreeSha string, content []Contents) (string, error) {
 
-	var blobContents []struct {
+	type DeleteFile struct {
+		Path string      `json:"path"`
+		Mode string      `json:"mode"`
+		Type string      `json:"type"`
+		Sha  interface{} `json:"sha"`
+	}
+
+	type AddOrUpdateFile struct {
 		Path    string `json:"path"`
 		Mode    string `json:"mode"`
 		Type    string `json:"type"`
 		Content string `json:"content"`
 	}
 
+	var blobContents []interface{}
+
 	for _, c := range content {
-		blobContents = append(blobContents, struct {
-			Path    string `json:"path"`
-			Mode    string `json:"mode"`
-			Type    string `json:"type"`
-			Content string `json:"content"`
-		}{
-			Path:    c.Path,
-			Mode:    "100644",
-			Type:    "blob",
-			Content: c.ChangedContent,
-		})
+		if c.ChangedContent == "null" {
+			// File to be deleted
+			deleteFile := DeleteFile{
+				Path: c.Path,
+				Mode: "100644",
+				Type: "blob",
+				Sha:  nil,
+			}
+			blobContents = append(blobContents, deleteFile)
+		} else {
+			// File to be added or modified
+			addOrUpdateFile := AddOrUpdateFile{
+				Path:    c.Path,
+				Mode:    "100644",
+				Type:    "blob",
+				Content: c.ChangedContent,
+			}
+			blobContents = append(blobContents, addOrUpdateFile)
+		}
 	}
 
 	requestBody, err := json.Marshal(map[string]interface{}{
@@ -350,6 +367,14 @@ type CommitResponse struct {
 	Message      string       `json:"message"`
 	Parents      []Parent     `json:"parents"`
 	Verification Verification `json:"verification"`
+}
+
+type BlobContent struct {
+	Path    string  `json:"path"`
+	Mode    string  `json:"mode"`
+	Type    string  `json:"type"`
+	Content string  `json:"content,omitempty"`
+	Sha     *string `json:"sha,omitempty"`
 }
 
 type User struct {
