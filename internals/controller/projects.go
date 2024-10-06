@@ -97,7 +97,7 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
-	folders := []string{"markdown", "html", "plaintext", "simpledocs", "simpledocs/files"}
+	folders := []string{"simpledocs", "simpledocs/files"}
 
 	for _, folder := range folders {
 		err := createRepoContents(body.Name, name, folder, ctx, body.Org)
