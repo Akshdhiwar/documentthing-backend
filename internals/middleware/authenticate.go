@@ -14,6 +14,13 @@ func AuthMiddleware(ctx *gin.Context) {
 	// Extract the token from the cookie
 	tokenString, err := ctx.Cookie("betterDocsAT")
 	if err != nil {
+
+		if tokenString == "" {
+			generateNewAccessToken(ctx)
+			ctx.Next()
+			return
+		}
+
 		ctx.JSON(http.StatusUnauthorized, gin.H{
 			"message": "Authorization token not found",
 		})
