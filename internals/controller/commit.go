@@ -87,6 +87,8 @@ func CommitChanges(ctx *gin.Context) {
 		return
 	}
 
+	utils.NotifyUsers(body.ProjectID, ctx.GetHeader("X-User-Id"))
+
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Changes committed successfully",
 	})
