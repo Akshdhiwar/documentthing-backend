@@ -19,6 +19,7 @@ func CreateInvite(ctx *gin.Context) {
 		Email      string `json:"email"`
 		ProjectID  string `json:"project_id"`
 		Role       string `json:"role"`
+		OrgID      string `json:"org_id"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -74,6 +75,7 @@ func CreateInvite(ctx *gin.Context) {
 		"projectID":  body.ProjectID,
 		"role":       body.Role,
 		"sub":        id,
+		"orgID":      body.OrgID,
 		"exp":        time.Now().Add(time.Hour * 48).Unix(),
 	})
 
@@ -165,6 +167,15 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
+	// Create a entry in org-user-project-mapping table
+	_, err = tx.Exec(context.Background(), `INSERT INTO org_project_user_mapping (org_id, user_id, project_id, role) VALUES ($1, $2, $3, $4)`, claims.OrgID, body.ID, claims.ProjectID, claims.Role)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error saving data to DB: " + err.Error(),
+		})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, "Invite accepted successfully")
 }
 
@@ -173,6 +184,7 @@ type Claims struct {
 	Email      string `json:"email"`
 	ProjectID  string `json:"projectID"`
 	Role       string `json:"role"`
+	OrgID      string `json:"orgID"`
 	jwt.RegisteredClaims
 }
 

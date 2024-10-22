@@ -75,4 +75,36 @@ func Migrations() {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
 
+	// Create a Organization Table
+	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS organizations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        deleted_at TIMESTAMPTZ,
+        name TEXT NOT NULL,
+		owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+    )`)
+
+	if err != nil {
+		log.Fatalf("Failed to execute migration: %v", err)
+	}
+
+	// Create a org-project-user-mapping table
+	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS org_project_user_mapping (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        deleted_at TIMESTAMPTZ,
+        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL
+    )`)
+
+	if err != nil {
+		log.Fatalf("Failed to execute migration: %v", err)
+	}
+
+	log.Println("All migrations executed successfully")
+
 }

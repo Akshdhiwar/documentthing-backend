@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func GetAccessTokenFromGithub(ctx *gin.Context) {
@@ -137,6 +139,11 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 	}
 	defer resp.Body.Close()
 
+	// Handle response from GitHub API
+	if resp.StatusCode != http.StatusOK {
+		return models.Users{}, fmt.Errorf("failed to get user details: %s", resp.Status)
+	}
+
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -177,17 +184,48 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 		user.GithubName = userDetails.Login
 		user.Name = userDetails.Name
 
-		// Insert the new user into the database
-		err := initializer.DB.QueryRow(context.Background(),
+		// Start a new transaction to insert the new user into the database
+		tx, err := initializer.DB.Begin(context.Background())
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to start a transaction: %w", err)
+		}
+
+		// Ensure transaction is committed or rolled back
+		defer func() {
+			if p := recover(); p != nil {
+				tx.Rollback(context.Background()) // Rollback in case of a panic
+				panic(p)
+			} else if err != nil {
+				tx.Rollback(context.Background()) // Rollback if error occurs
+			} else {
+				err = tx.Commit(context.Background()) // Commit if no error
+			}
+		}()
+
+		// Insert the new user into the users table
+		err = tx.QueryRow(context.Background(),
 			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name`,
+	 VALUES ($1, $2, $3, $4, $5, $6, $7)
+	 RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name`,
 			user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name).
 			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name)
 
 		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to save data to DB while creating user: %w", err)
+			return models.Users{}, fmt.Errorf("unable to save user to DB: %w", err)
 		}
+
+		// Insert a new entry into the organization table and return the uuid
+		var organizationUUID string
+		err = tx.QueryRow(context.Background(),
+			`INSERT INTO organizations (owner_id, name)
+	 VALUES ($1, $2)
+	 RETURNING id`,
+			user.ID, user.GithubName).Scan(&organizationUUID)
+
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
+		}
+
 	} else {
 		// Fetch the existing user from the database
 		err = initializer.DB.QueryRow(context.Background(),
@@ -298,6 +336,11 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 	}
 	defer resp.Body.Close() // Ensure the response body is closed
 
+	if resp.StatusCode != http.StatusOK {
+		ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Unexpected status code: %d", resp.StatusCode))
+		return
+	}
+
 	// Read the response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -315,7 +358,16 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 	id := userDetails.ID
 
 	var exists bool
-	err = initializer.DB.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)", id).Scan(&exists)
+	err = initializer.DB.QueryRow(context.Background(), `SELECT EXISTS 
+	(
+    SELECT
+      1
+    FROM
+      users
+    WHERE
+      github_id = $1
+  ) AS EXISTS;
+`, id).Scan(&exists)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": err.Error(),
@@ -420,4 +472,50 @@ type GitHubPlan struct {
 	Name          string `json:"name"`
 	PrivateRepos  int    `json:"private_repos"`
 	Space         int64  `json:"space"`
+}
+
+func GetUserOrganization(ctx *gin.Context) {
+
+	// get user id from headers
+	userID := ctx.GetHeader("X-User-Id")
+
+	// check for empty user id
+	if userID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "User ID is required",
+			"type":    "error",
+		})
+		return
+	}
+
+	// get the organization id from database
+	org, err := getOrganizationFromDB(userID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error while getting organization from DB",
+			"type":    "error",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"org": org,
+	})
+
+}
+
+// func for getOrganizationIDFromDB
+
+func getOrganizationFromDB(userID string) (Organization, error) {
+	var org Organization
+	err := initializer.DB.QueryRow(context.Background(), `SELECT id, name FROM organizations WHERE owner_id = $1`, userID).Scan(&org.ID, &org.Name)
+	if err == sql.ErrNoRows {
+		return org, fmt.Errorf("no organization found for user with ID %s", userID)
+	}
+	return org, err
+}
+
+type Organization struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }

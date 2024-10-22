@@ -21,6 +21,7 @@ func CreateNewProject(ctx *gin.Context) {
 		ID    string `json:"id"`
 		Org   string `json:"org"`
 		Owner string `json:"owner"`
+		OrgID string `json:"org_id"`
 	}
 
 	// Bind JSON input to the body variable
@@ -43,6 +44,14 @@ func CreateNewProject(ctx *gin.Context) {
 
 	// now saving the details in DB
 	userId, err := uuid.Parse(body.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error parsing UUID" + err.Error(),
+		})
+		return
+	}
+
+	orgId, err := uuid.Parse(body.OrgID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error parsing UUID" + err.Error(),
@@ -93,6 +102,15 @@ func CreateNewProject(ctx *gin.Context) {
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting user data from DB" + err.Error(),
+		})
+		return
+	}
+
+	// Create a entry in org-user-project-mapping table
+	_, err = tx.Exec(context.Background(), `INSERT INTO org_project_user_mapping (org_id, user_id, project_id, role) VALUES ($1, $2, $3, $4)`, orgId, userId, projectID, "Owner")
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error saving data to DB" + err.Error(),
 		})
 		return
 	}
