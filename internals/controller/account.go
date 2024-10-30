@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
@@ -518,4 +520,104 @@ func getOrganizationFromDB(userID string) (Organization, error) {
 type Organization struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+}
+
+// Struct to hold OTP details
+type OtpDetails struct {
+	OTP        string
+	Email      string
+	ValidUntil time.Time // Add a field to manage OTP expiration
+}
+
+// Global variable to store OTPs
+var otpStore = struct {
+	sync.RWMutex
+	data map[string]OtpDetails
+}{data: make(map[string]OtpDetails)}
+
+func CreateEmailOtp(ctx *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// generate OTP
+	otp := generateOTP()
+
+	// Save OTP details in the hashmap
+	otpStore.Lock() // Lock the map for writing
+	otpStore.data[userID] = OtpDetails{
+		OTP:        otp,
+		Email:      body.Email,
+		ValidUntil: time.Now().Add(5 * time.Minute), // Example expiration time
+	}
+	otpStore.Unlock() // Unlock the map
+	// send OTP to email
+	err = sendEmail(body.Email, otp)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while sending OTP"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully", otp: otp})
+}
+
+func generateOTP() string {
+	// Create a new random number generator
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	otp := r.Intn(1000000)          // Generates a random number between 0 and 999999
+	return fmt.Sprintf("%06d", otp) // Formats as a 6-digit string with leading zeros if needed
+}
+
+func sendEmail(email string, otp string) error {
+	// use your email service provider here
+	// ...
+	fmt.Println(email, otp)
+	return nil
+}
+
+func VerifyOtp(ctx *gin.Context) {
+	var body struct {
+		OTP string `json:"otp"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	otpStore.Lock() // Lock the map for reading
+	details, ok := otpStore.data[userID]
+	otpStore.Unlock() // Unlock the map
+
+	if !ok || details.ValidUntil.Before(time.Now()) {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Invalid OTP or OTP expired"})
+		return
+	}
+
+	if details.OTP != body.OTP {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Invalid OTP"})
+		return
+	}
+
+	_, err = initializer.DB.Query(context.Background(), `UPDATE users
+SET email = $1
+WHERE id = $2;`, details.Email, userID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while saving user to DB"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
+	delete(otpStore.data, userID) // Delete OTP details from the map after successful verification
 }

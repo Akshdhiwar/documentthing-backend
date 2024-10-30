@@ -17,4 +17,10 @@ func AccountRoutes(router *gin.RouterGroup) {
 	// Get api to get user organization
 	router.GET("/org", middleware.AuthMiddleware, controller.GetUserOrganization)
 
+	// POST api to create a 6 digit otp to verify and add email
+	router.POST("/add-email", middleware.AuthMiddleware, controller.CreateEmailOtp)
+
+	// POST api to verify the otp
+	router.POST("/verify-otp", middleware.AuthMiddleware, controller.VerifyOtp)
+
 }

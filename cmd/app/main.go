@@ -29,6 +29,9 @@ func main() {
 	// You can also set it to run every hour, or any other interval
 	scheduler.Every(1).Hour().Do(utils.DeleteExpiredInvites)
 
+	// paypal access token to be requested after 7 hours
+	scheduler.Every(7).Hour().Do(utils.GetPaypalAccessToken)
+
 	// Start the scheduler in blocking mode
 	scheduler.StartAsync()
 
@@ -72,6 +75,15 @@ func main() {
 
 	// api route for commit and save the changes
 	api.CommitRoutes(router.Group(baseRoute + "/commit"))
+
+	// api routes for products api
+	api.ProductRoutes(router.Group(baseRoute + "/product"))
+
+	// api routes for subscription plans api
+	api.SubscriptionPlanRoutes(router.Group(baseRoute + "/subscription-plan"))
+
+	// paypal webhook
+	router.POST(baseRoute+"/webhook", utils.HandleWebhookEvents)
 
 	// Run the server on port 3000
 	router.Run()

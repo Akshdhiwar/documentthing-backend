@@ -66,6 +66,64 @@ func AuthMiddleware(ctx *gin.Context) {
 	ctx.Next()
 }
 
+func AuthenticateAdminApi(ctx *gin.Context) {
+	// Extract the token from the cookie
+	tokenString, err := ctx.Cookie("betterDocsAT")
+	if err != nil {
+
+		if tokenString == "" {
+			generateNewAccessToken(ctx)
+			ctx.Next()
+			return
+		}
+
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"message": "Authorization token not found",
+		})
+		ctx.Abort()
+		return
+	}
+
+	// Parse and validate the token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Make sure the signing method is HMAC
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		// Return the secret signing key
+		return []byte(os.Getenv("JWTSECRET_ACCESS")), nil
+	})
+
+	// Handle errors in token parsing
+	if err != nil {
+		if err.Error() == "token has invalid claims: token is expired" {
+			generateNewAccessToken(ctx)
+			ctx.Next()
+			return
+		}
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"message": "Authorization token not found",
+		})
+		ctx.Abort()
+		return
+	}
+
+	// Check if the token is valid and extract claims
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		// Store the claims in the context
+		if sub, ok := claims["sub"].(string); ok {
+			if sub == os.Getenv("ADMIN_GITHUB_ID") {
+				ctx.Next()
+				return
+			}
+			ctx.Abort()
+		}
+	}
+
+	// Proceed to the next handler
+	ctx.Next()
+}
+
 func generateNewAccessToken(ctx *gin.Context) {
 	// Extract the token from the cookie
 	tokenString, err := ctx.Cookie("betterDocsRT")
