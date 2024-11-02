@@ -610,9 +610,22 @@ func VerifyOtp(ctx *gin.Context) {
 		return
 	}
 
-	_, err = initializer.DB.Query(context.Background(), `UPDATE users
-SET email = $1
-WHERE id = $2;`, details.Email, userID)
+	// Update user email in the database
+	var userUUID uuid.UUID
+
+	err = initializer.DB.QueryRow(context.Background(), `
+    UPDATE users
+    SET email = $1
+    WHERE id = $2
+    RETURNING id;`, details.Email, userID).Scan(&userUUID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while saving user to DB"})
+		return
+	}
+
+	_, err = initializer.DB.Query(context.Background(), `UPDATE organizations
+	SET email = $1
+	WHERE owner_id = $2;`, details.Email, userUUID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while saving user to DB"})
 		return

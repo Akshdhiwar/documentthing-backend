@@ -79,11 +79,11 @@ func main() {
 	// api routes for products api
 	api.ProductRoutes(router.Group(baseRoute + "/product"))
 
-	// api routes for subscription plans api
-	api.SubscriptionPlanRoutes(router.Group(baseRoute + "/subscription-plan"))
-
 	// paypal webhook
 	router.POST(baseRoute+"/webhook", utils.HandleWebhookEvents)
+
+	// Subscription routes
+	api.SubscriptionRoutes(router.Group(baseRoute + "/subscription"))
 
 	// Run the server on port 3000
 	router.Run()

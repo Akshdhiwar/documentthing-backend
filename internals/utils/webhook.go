@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
+	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
 	"github.com/gin-gonic/gin"
 )
@@ -37,6 +39,15 @@ func HandleWebhookEvents(ctx *gin.Context) {
 			fmt.Println("Subscription Activated:", resource.ID)
 			// fmt.Println("Subscription Activated:", event)
 			// Update user subscription status in database
+
+			_, err := initializer.DB.Query(context.Background(),
+				`UPDATE organizations SET status = true WHERE subscription_id = $1`,
+				resource.ID)
+
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while updating subscription status"})
+				return
+			}
 		}
 
 	case "BILLING.SUBSCRIPTION.CANCELLED":
@@ -44,6 +55,12 @@ func HandleWebhookEvents(ctx *gin.Context) {
 		if err := json.Unmarshal(event.Resource, &resource); err == nil {
 			fmt.Println("Subscription Cancelled:", resource.ID)
 			// Update user subscription status in database
+			_, err := initializer.DB.Query(context.Background(), `UPDATE organizations SET status = false WHERE subscription_id = $1 `, resource.ID)
+
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while updating subscription status"})
+				return
+			}
 		}
 
 	case "BILLING.SUBSCRIPTION.EXPIRED":
@@ -51,6 +68,12 @@ func HandleWebhookEvents(ctx *gin.Context) {
 		if err := json.Unmarshal(event.Resource, &resource); err == nil {
 			fmt.Println("Subscription Expired:", resource.ID)
 			// Update user subscription status in database
+			_, err := initializer.DB.Query(context.Background(), `UPDATE organizations SET status = false WHERE subscription_id = $1 `, resource.ID)
+
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while updating subscription status"})
+				return
+			}
 		}
 
 	// Add other cases as necessary for events like BILLING.SUBSCRIPTION.RENEWED, PAYMENT.SALE.COMPLETED, etc.

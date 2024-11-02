@@ -2,13 +2,111 @@ package controller
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"time"
 
+	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 )
+
+func AddSubcription(ctx *gin.Context) {
+	var body struct {
+		SubID string `json:"sub_id"`
+		OrgID string `json:"org_id"`
+	}
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while binding body")
+		return
+	}
+
+	_, err = initializer.DB.Query(
+		context.Background(),
+		`UPDATE organizations SET subscription_id = $1 WHERE id = $2`,
+		body.SubID,
+		body.OrgID,
+	)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while updating subscription")
+		return
+	}
+
+	ctx.JSON(http.StatusOK, "Subscription updated successfully")
+
+}
+
+func GetSubscriptionDetails(ctx *gin.Context) {
+	orgID := ctx.Param("id")
+
+	var subID string
+	err := initializer.DB.QueryRow(
+		context.Background(),
+		`SELECT subscription_id FROM organizations WHERE id = $1`,
+		orgID,
+	).Scan(&subID)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If no subscription ID is found, return a 404 error
+			ctx.JSON(http.StatusNotFound, gin.H{"error": "Subscription not found for organization"})
+		} else {
+			// Other database errors
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while retrieving subscription"})
+		}
+		return
+	}
+
+	// Make request to PayPal subscription API and get the subscription details
+	subscription, err := getSubscriptionDetailsFromPaypal(subID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching subscription details from PayPal"})
+		fmt.Printf("Error fetching subscription details: %v\n", err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, subscription)
+}
+
+// getSubscriptionDetailsFromPaypal fetches subscription details from PayPal
+func getSubscriptionDetailsFromPaypal(id string) (*models.Subscription, error) {
+
+	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/subscriptions/%s", id)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get subscription details: %v - %s", resp.Status, body)
+	}
+
+	var subscription models.Subscription
+	if err := json.NewDecoder(resp.Body).Decode(&subscription); err != nil {
+		return nil, err
+	}
+
+	return &subscription, nil
+}
 
 // Function to create PayPal subscription plan
 func CreatePaypalSubscriptionPlan(ctx *gin.Context) {
