@@ -23,4 +23,7 @@ func AccountRoutes(router *gin.RouterGroup) {
 	// POST api to verify the otp
 	router.POST("/verify-otp", middleware.AuthMiddleware, controller.VerifyOtp)
 
+	//GET api to get the status of organization
+	router.GET("/status", middleware.AuthMiddleware, controller.GetAccountStatus)
+
 }

@@ -124,7 +124,7 @@ func CreatePaypalSubscriptionPlan(ctx *gin.Context) {
 		"description": request.Description,
 		"billing_cycles": []map[string]interface{}{
 			{
-				"frequency": map[string]string{
+				"frequency": map[string]interface{}{
 					"interval_unit":  "MONTH",
 					"interval_count": "1",
 				},
@@ -132,13 +132,14 @@ func CreatePaypalSubscriptionPlan(ctx *gin.Context) {
 				"sequence":     1,
 				"total_cycles": 0, // 0 for infinite cycles
 				"pricing_scheme": map[string]interface{}{
-					"fixed_price": map[string]string{
+					"fixed_price": map[string]interface{}{
 						"value":         request.Price,
-						"currency_code": request.Currency,
+						"currency_code": "USD",
 					},
 				},
 			},
 		},
+		"quantity_supported": true,
 		"payment_preferences": map[string]interface{}{
 			"auto_bill_outstanding": true,
 			"setup_fee": map[string]string{
@@ -195,7 +196,7 @@ type SubscriptionPlanRequest struct {
 // Function to get PayPal subscription plans
 func GetPaypalSubscriptionPlans(ctx *gin.Context) {
 
-	url := "https://api-m.sandbox.paypal.com/v1/billing/plans?page_size=10&page=1&total_required=true" // Customize query params if needed
+	url := "https://api-m.sandbox.paypal.com/v1/billing/plans?page_size=20" // Customize query params if needed
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -227,4 +228,52 @@ func GetPaypalSubscriptionPlans(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"plans": result})
+}
+
+func DeleteSubscriptionPlan(ctx *gin.Context) {
+	var body struct {
+		PlanID string `json:"plan_id"`
+	}
+
+	// Bind JSON body to retrieve Plan ID
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Error while binding body"})
+		return
+	}
+
+	if body.PlanID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Plan ID is required"})
+		return
+	}
+
+	// PayPal API endpoint for deactivating a plan
+	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/plans/%s/deactivate", body.PlanID)
+
+	// Create a new POST request for deactivation
+	req, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+
+	// Set authorization and content headers
+	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Execute the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send request to PayPal"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check response status for success
+	if resp.StatusCode == http.StatusNoContent {
+		ctx.JSON(http.StatusOK, gin.H{"message": "Subscription plan deactivated successfully"})
+	} else {
+		ctx.JSON(resp.StatusCode, gin.H{"error": "Failed to deactivate subscription plan"})
+	}
 }

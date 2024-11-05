@@ -16,4 +16,6 @@ func SubscriptionRoutes(router *gin.RouterGroup) {
 
 	router.GET("/details/:id", controller.GetSubscriptionDetails)
 
+	router.POST("/delete", controller.DeleteSubscriptionPlan)
+
 }

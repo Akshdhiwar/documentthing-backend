@@ -634,3 +634,35 @@ func VerifyOtp(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
 	delete(otpStore.data, userID) // Delete OTP details from the map after successful verification
 }
+
+func GetAccountStatus(ctx *gin.Context) {
+	// get user id from headers
+	userID := ctx.GetHeader("X-User-Id")
+
+	// check for empty user id
+	if userID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "User ID is required",
+			"type":    "error",
+		})
+		return
+	}
+
+	var status bool
+
+	err := initializer.DB.QueryRow(context.Background(), `SELECT status FROM organizations WHERE owner_id = $1`, userID).Scan(&status)
+	if err == sql.ErrNoRows {
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"message": "No organization found for user with ID " + userID,
+			"type":    "error",
+		})
+		return
+	} else if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error while retrieving account status",
+			"type":    "error",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, status)
+}

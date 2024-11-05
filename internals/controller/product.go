@@ -73,7 +73,7 @@ func CreatePaypalProduct(c *gin.Context) {
 
 func GetProductsFromPaypal(c *gin.Context) {
 	// PayPal API URL for fetching products
-	apiURL := "https://api-m.sandbox.paypal.com/v1/catalogs/products"
+	apiURL := "https://api-m.sandbox.paypal.com/v1/catalogs/products?page_size=50"
 
 	// Create a new GET request to PayPal API
 	req, err := http.NewRequest("GET", apiURL, nil)
