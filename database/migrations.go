@@ -43,21 +43,6 @@ func Migrations() {
 		log.Fatalf("Failed to execute migration: %v", err)
 	}
 
-	// Create the user_project_mapping table
-	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS user_project_mapping (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		created_at TIMESTAMPTZ DEFAULT now(),
-		updated_at TIMESTAMPTZ DEFAULT now(),
-		deleted_at TIMESTAMPTZ,
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-		CONSTRAINT user_project_unique UNIQUE (user_id, project_id)
-	)`)
-
-	if err != nil {
-		log.Fatalf("Failed to execute migration: %v", err)
-	}
-
 	// Create the invite table
 	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS invite (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,8 +67,26 @@ func Migrations() {
         updated_at TIMESTAMPTZ DEFAULT now(),
         deleted_at TIMESTAMPTZ,
         name TEXT NOT NULL,
-		owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+        owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        email TEXT DEFAULT NULL,
+        subscription_id TEXT DEFAULT NULL,
+        status BOOLEAN DEFAULT FALSE
     )`)
+
+	if err != nil {
+		log.Fatalf("Failed to execute migration: %v", err)
+	}
+
+	// Create the user_project_mapping table
+	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS user_project_mapping (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		created_at TIMESTAMPTZ DEFAULT now(),
+		updated_at TIMESTAMPTZ DEFAULT now(),
+		deleted_at TIMESTAMPTZ,
+		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		CONSTRAINT user_project_unique UNIQUE (user_id, project_id)
+	)`)
 
 	if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
@@ -99,6 +102,18 @@ func Migrations() {
         project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         role TEXT NOT NULL
+    )`)
+
+	if err != nil {
+		log.Fatalf("Failed to execute migration: %v", err)
+	}
+
+	_, err = initializer.DB.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS org_user_mapping (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
     )`)
 
 	if err != nil {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -64,25 +65,27 @@ func GetOrgMembersAdminOnly(ctx *gin.Context) {
 
 	// Define a slice of structs to hold multiple members
 	var members []struct {
-		ProjectName string `json:"project_name"`
-		UserName    string `json:"user_name"`
-		UserRole    string `json:"user_role"`
+		ProjectName string  `json:"project_name"`
+		GithubName  *string `json:"github_name"`
+		Role        *string `json:"role"`
 	}
 
 	// Execute the query
 	rows, err := initializer.DB.Query(context.Background(), `
-		SELECT
+		SELECT DISTINCT
+			u.github_name,
 			p.name AS project_name,
-			u.name AS user_name,
-			upm.role AS user_role
-		FROM
-			public.org_project_user_mapping opum
-			LEFT JOIN public.projects p ON opum.project_id = p.id
-			LEFT JOIN public.users u ON opum.user_id = u.id
-			LEFT JOIN public.user_project_mapping upm ON opum.user_id = upm.user_id
-			AND opum.project_id = upm.project_id
-		WHERE
-			opum.org_id = $1
+			opum.role AS role
+		FROM 
+			users u
+		JOIN 
+			org_user_mapping oum ON u.id = oum.user_id
+		LEFT JOIN 
+			org_project_user_mapping opum ON u.id = opum.user_id AND oum.org_id = opum.org_id
+		LEFT JOIN 
+			projects p ON opum.project_id = p.id
+		WHERE 
+			oum.org_id = $1
 	`, orgID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve members"})
@@ -93,15 +96,36 @@ func GetOrgMembersAdminOnly(ctx *gin.Context) {
 	// Iterate over the result set
 	for rows.Next() {
 		var member struct {
-			ProjectName string `json:"project_name"`
-			UserName    string `json:"user_name"`
-			UserRole    string `json:"user_role"`
+			ProjectName string  `json:"project_name"`
+			GithubName  *string `json:"github_name"`
+			Role        *string `json:"role"`
 		}
 
-		// Scan each row into the member struct
-		if err := rows.Scan(&member.ProjectName, &member.UserName, &member.UserRole); err != nil {
+		// Initialize fields with default values in case of NULLs
+		var githubName, role sql.NullString
+		var projectName sql.NullString
+
+		// Scan each row into temporary variables
+		if err := rows.Scan(&githubName, &projectName, &role); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan member"})
 			return
+		}
+
+		// Assign values, setting to `nil` if they are NULL
+		if githubName.Valid {
+			member.GithubName = &githubName.String
+		} else {
+			member.GithubName = nil
+		}
+		if projectName.Valid {
+			member.ProjectName = projectName.String
+		} else {
+			member.ProjectName = ""
+		}
+		if role.Valid {
+			member.Role = &role.String
+		} else {
+			member.Role = nil
 		}
 
 		// Append each member to the members slice

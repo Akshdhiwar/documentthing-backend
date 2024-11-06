@@ -228,6 +228,11 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
 		}
 
+		_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 )`, organizationUUID, user.ID)
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
+		}
+
 	} else {
 		// Fetch the existing user from the database
 		err = initializer.DB.QueryRow(context.Background(),

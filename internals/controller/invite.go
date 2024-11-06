@@ -176,6 +176,14 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
+	_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 , $3)`, claims.OrgID, body.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error saving data to DB: " + err.Error(),
+		})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, "Invite accepted successfully")
 }
 
