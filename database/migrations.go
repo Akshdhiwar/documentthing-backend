@@ -70,7 +70,9 @@ func Migrations() {
         owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         email TEXT DEFAULT NULL,
         subscription_id TEXT DEFAULT NULL,
-        status BOOLEAN DEFAULT FALSE
+        status BOOLEAN DEFAULT FALSE,
+		max_user INT DEFAULT NULL,
+		subs_name TEXT DEFAULT NULL
     )`)
 
 	if err != nil {

@@ -3,7 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -26,11 +26,10 @@ func GenerateJWT() (string, error) {
 	}
 
 	// Create the JWT claims, which include the GitHub App ID and issued times
-	now := time.Now().UTC()
 	claims := jwt.MapClaims{
-		"iat": now.Unix(),                       // Issued at time
-		"exp": now.Add(time.Minute * 10).Unix(), // Expiration time (10 minutes)
-		"iss": os.Getenv("GITHUB_APP_ID"),       // GitHub App ID
+		"iat": time.Now().Unix(),                       // Issued at time
+		"exp": time.Now().Add(time.Minute * 10).Unix(), // Expiration time (10 minutes)
+		"iss": os.Getenv("GITHUB_APP_ID"),              // GitHub App ID
 	}
 
 	// Create the JWT
@@ -61,7 +60,7 @@ func GetInstallationAccessToken(id string, token string) (string, error) {
 		return "", fmt.Errorf("failed to make HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}

@@ -184,6 +184,17 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
+	_, err = tx.Exec(context.Background(), `
+    UPDATE organizations 
+    SET user_count = user_count + 1 
+    WHERE id = $1
+	`, claims.OrgID)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to increment user count"})
+		return
+	}
+
 	ctx.JSON(http.StatusOK, "Invite accepted successfully")
 }
 

@@ -219,10 +219,10 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 		// Insert a new entry into the organization table and return the uuid
 		var organizationUUID string
 		err = tx.QueryRow(context.Background(),
-			`INSERT INTO organizations (owner_id, name)
-	 VALUES ($1, $2)
+			`INSERT INTO organizations (owner_id, name , email)
+	 VALUES ($1, $2 , $3)
 	 RETURNING id`,
-			user.ID, user.GithubName).Scan(&organizationUUID)
+			user.ID, user.GithubName, user.Email).Scan(&organizationUUID)
 
 		if err != nil {
 			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)

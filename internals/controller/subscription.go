@@ -18,8 +18,10 @@ import (
 
 func AddSubcription(ctx *gin.Context) {
 	var body struct {
-		SubID string `json:"sub_id"`
-		OrgID string `json:"org_id"`
+		SubID        string `json:"sub_id"`
+		OrgID        string `json:"org_id"`
+		MaxUserCount int8   `json:"max_user_count"`
+		SubName      string `json:"sub_name"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -30,8 +32,10 @@ func AddSubcription(ctx *gin.Context) {
 
 	_, err = initializer.DB.Query(
 		context.Background(),
-		`UPDATE organizations SET subscription_id = $1 WHERE id = $2`,
+		`UPDATE organizations SET subscription_id = $1 , subs_name = $2 , max_user = $3 WHERE id = $4`,
 		body.SubID,
+		body.SubName,
+		body.MaxUserCount,
 		body.OrgID,
 	)
 
