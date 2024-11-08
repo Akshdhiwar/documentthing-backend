@@ -20,6 +20,7 @@ func OrgRoutes(router *gin.RouterGroup) {
 	router.GET("/:id/billing/trasnsactions", controller.GetSubscriptionTransactions)
 
 	router.POST("/billing/cancel", controller.CancelPayPalSubscription)
+
 	router.POST("/billing/activate", controller.ActivatePayPalSubscription)
 
 }

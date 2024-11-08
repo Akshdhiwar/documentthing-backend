@@ -153,12 +153,13 @@ func GetSubscriptionBillingDetails(ctx *gin.Context) {
 		MaxCount   int    `json:"max_count"`
 		SubID      string `json:"sub_id"`
 		ActiveUser int    `json:"active_user"`
+		PlanID     string `json:"plan_id"`
 	}
 
 	// Get the subscription details from the database
 	err := initializer.DB.QueryRow(context.Background(), `
-    SELECT subs_name, max_user, subscription_id , user_count FROM organizations WHERE id = $1
-	`, orgID).Scan(&subDetails.SubName, &subDetails.MaxCount, &subDetails.SubID, &subDetails.ActiveUser)
+    SELECT subs_name, max_user, subscription_id , user_count , plan_id FROM organizations WHERE id = $1
+	`, orgID).Scan(&subDetails.SubName, &subDetails.MaxCount, &subDetails.SubID, &subDetails.ActiveUser, &subDetails.PlanID)
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve subscription details"})
