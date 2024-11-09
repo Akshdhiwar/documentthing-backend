@@ -283,3 +283,122 @@ func DeleteSubscriptionPlan(ctx *gin.Context) {
 		ctx.JSON(resp.StatusCode, gin.H{"error": "Failed to deactivate subscription plan"})
 	}
 }
+
+func GetPayPalPlanDetailsHandler(c *gin.Context) {
+	planID := c.Param("id") // get planID from URL params
+	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/plans/%s", planID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch plan details"})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(resp.StatusCode, gin.H{"error": "Failed to fetch plan details"})
+		return
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response body"})
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse response"})
+		return
+	}
+
+	// Send the parsed JSON response
+	c.JSON(http.StatusOK, result)
+
+}
+
+func UpdatePaypalPlanPricing(c *gin.Context) {
+
+	var body struct {
+		PlanID   string  `json:"plan_id"`
+		NewPrice float32 `json:"new_price"`
+	}
+
+	// Bind JSON body to retrieve plan ID and new price
+	err := c.ShouldBindJSON(&body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while binding body"})
+		return
+	}
+
+	if body.PlanID == "" || body.NewPrice <= 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Plan ID and new price are required"})
+		return
+	}
+
+	// Validate the plan ID format
+
+	// Prepare the request data
+	payload := map[string]interface{}{
+		"pricing_schemes": []map[string]interface{}{
+			{
+				"billing_cycle_sequence": 1,
+				"pricing_scheme": map[string]interface{}{
+					"fixed_price": map[string]interface{}{
+						"value":         body.NewPrice,
+						"currency_code": "USD",
+					},
+				},
+			},
+		},
+	}
+
+	// Serialize the payload to JSON
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal payload"})
+		return
+	}
+
+	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/plans/%s/update-pricing-schemes", body.PlanID)
+
+	// Create the request to PayPal API
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+
+	// Set headers
+	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken) // Replace with valid access token
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Execute the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request"})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Check if the response is successful
+	if resp.StatusCode != http.StatusOK {
+		c.JSON(resp.StatusCode, gin.H{"error": "Failed to update pricing scheme"})
+		return
+	}
+
+	// Send a success response to the client
+	c.JSON(http.StatusOK, gin.H{"message": "Pricing scheme updated successfully"})
+}

@@ -16,6 +16,10 @@ func SubscriptionRoutes(router *gin.RouterGroup) {
 
 	router.GET("/details/:id", controller.GetSubscriptionDetails)
 
+	router.GET("/plan/details/:id", controller.GetPayPalPlanDetailsHandler)
+
 	router.POST("/delete", controller.DeleteSubscriptionPlan)
+
+	router.POST("/plan/update", controller.UpdatePaypalPlanPricing)
 
 }
