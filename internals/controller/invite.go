@@ -285,7 +285,7 @@ func AcceptInvite(ctx *gin.Context) {
 		return
 	}
 
-	err = UpdateSubscriptionQuantity(count, subscription_id, "")
+	err = UpdateSubscriptionQuantity(count, subscription_id)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription quantity"})
 		return
@@ -327,12 +327,11 @@ func parseJWTToken(token string, hmacSecret []byte) (claims Claims, err error) {
 	return Claims{}, fmt.Errorf("invalid token")
 }
 
-func UpdateSubscriptionQuantity(quantity, subID string, plan_id string) error {
+func UpdateSubscriptionQuantity(quantity, subID string) error {
 	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/subscriptions/%s/revise", subID)
 
 	// Define the payload
 	payload := map[string]interface{}{
-		"plan_id":  plan_id,
 		"quantity": quantity,
 	}
 

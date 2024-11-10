@@ -66,7 +66,7 @@ func AuthMiddleware(ctx *gin.Context) {
 	ctx.Next()
 }
 
-func AuthenticateAdminApi(ctx *gin.Context) {
+func AuthenticateSuperAdminApi(ctx *gin.Context) {
 	// Extract the token from the cookie
 	tokenString, err := ctx.Cookie("betterDocsAT")
 	if err != nil {

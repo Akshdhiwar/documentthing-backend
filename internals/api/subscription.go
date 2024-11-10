@@ -8,18 +8,19 @@ import (
 
 func SubscriptionRoutes(router *gin.RouterGroup) {
 
-	router.POST("/plan/create", middleware.AuthenticateAdminApi, controller.CreatePaypalSubscriptionPlan)
+	router.POST("/plan/create", middleware.AuthenticateSuperAdminApi, controller.CreatePaypalSubscriptionPlan)
 
-	router.GET("/plan/list", middleware.AuthenticateAdminApi, controller.GetPaypalSubscriptionPlans)
+	router.GET("/plan/list", middleware.AuthenticateSuperAdminApi, controller.GetPaypalSubscriptionPlans)
+
+	router.GET("/plan/details/:id", middleware.AuthenticateSuperAdminApi, controller.GetPayPalPlanDetailsHandler)
+
+	router.POST("/delete", middleware.AuthenticateSuperAdminApi, controller.DeleteSubscriptionPlan)
+
+	router.POST("/plan/update", middleware.AuthenticateSuperAdminApi, controller.UpdatePaypalPlanPricing)
+
+	// API for users subscription
 
 	router.POST("", controller.AddSubcription)
 
 	router.GET("/details/:id", controller.GetSubscriptionDetails)
-
-	router.GET("/plan/details/:id", controller.GetPayPalPlanDetailsHandler)
-
-	router.POST("/delete", controller.DeleteSubscriptionPlan)
-
-	router.POST("/plan/update", controller.UpdatePaypalPlanPricing)
-
 }

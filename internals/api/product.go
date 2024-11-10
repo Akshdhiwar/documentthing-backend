@@ -8,8 +8,8 @@ import (
 
 func ProductRoutes(router *gin.RouterGroup) {
 
-	router.POST("create", middleware.AuthenticateAdminApi, controller.CreatePaypalProduct)
+	router.POST("create", middleware.AuthenticateSuperAdminApi, controller.CreatePaypalProduct)
 
-	router.GET("list", middleware.AuthenticateAdminApi, controller.GetProductsFromPaypal)
+	router.GET("list", middleware.AuthenticateSuperAdminApi, controller.GetProductsFromPaypal)
 
 }

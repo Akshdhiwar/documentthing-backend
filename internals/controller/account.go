@@ -654,8 +654,9 @@ func GetAccountStatus(ctx *gin.Context) {
 	}
 
 	var status bool
+	var id string
 
-	err := initializer.DB.QueryRow(context.Background(), `SELECT status FROM organizations WHERE owner_id = $1`, userID).Scan(&status)
+	err := initializer.DB.QueryRow(context.Background(), `SELECT status , subscription_id FROM organizations WHERE owner_id = $1`, userID).Scan(&status, &id)
 	if err == sql.ErrNoRows {
 		ctx.JSON(http.StatusNotFound, gin.H{
 			"message": "No organization found for user with ID " + userID,
@@ -669,5 +670,8 @@ func GetAccountStatus(ctx *gin.Context) {
 		})
 		return
 	}
-	ctx.JSON(http.StatusOK, status)
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": status,
+		"id":     id,
+	})
 }
