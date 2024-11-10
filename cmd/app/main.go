@@ -77,13 +77,13 @@ func main() {
 	api.CommitRoutes(router.Group(baseRoute + "/commit"))
 
 	// api routes for products api
-	api.ProductRoutes(router.Group(baseRoute + "/product"))
+	// api.ProductRoutes(router.Group(baseRoute + "/product"))
 
 	// paypal webhook
-	router.POST(baseRoute+"/webhook", utils.HandleWebhookEvents)
+	// router.POST(baseRoute+"/webhook", utils.HandleWebhookEvents)
 
 	// Subscription routes
-	api.SubscriptionRoutes(router.Group(baseRoute + "/subscription"))
+	// api.SubscriptionRoutes(router.Group(baseRoute + "/subscription"))
 
 	// Run the server on port 3000
 	router.Run()
