@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -621,7 +622,7 @@ func updateFolderWithUpdatedFileName(folders []models.Folder, fileID uuid.UUID, 
 		if len(folder.Children) > 0 {
 			updatedChild, err := updateFolderWithUpdatedFileName(folder.Children, fileID, name)
 			if err != nil {
-				return nil, fmt.Errorf("Error while updating the file name")
+				return nil, errors.New("error while updating the file name")
 			}
 			folder.Children = updatedChild
 		}

@@ -13,4 +13,14 @@ func OrgRoutes(router *gin.RouterGroup) {
 	// GET Api to get orgs for the user
 	router.GET("", controller.GetOrganization)
 
+	router.GET("/:id/members", controller.GetOrgMembersAdminOnly)
+
+	// router.GET("/:id/billing/details", controller.GetSubscriptionBillingDetails)
+
+	// router.GET("/:id/billing/trasnsactions", controller.GetSubscriptionTransactions)
+
+	// router.POST("/billing/cancel", controller.CancelPayPalSubscription)
+
+	// router.POST("/billing/activate", controller.ActivatePayPalSubscription)
+
 }
