@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
@@ -217,11 +219,16 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 		// Insert a new entry into the organization table and return the uuid
 		var organizationUUID string
 		err = tx.QueryRow(context.Background(),
-			`INSERT INTO organizations (owner_id, name)
-	 VALUES ($1, $2)
+			`INSERT INTO organizations (owner_id, name , email)
+	 VALUES ($1, $2 , $3)
 	 RETURNING id`,
-			user.ID, user.GithubName).Scan(&organizationUUID)
+			user.ID, user.GithubName, user.Email).Scan(&organizationUUID)
 
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
+		}
+
+		_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 )`, organizationUUID, user.ID)
 		if err != nil {
 			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
 		}
@@ -518,4 +525,153 @@ func getOrganizationFromDB(userID string) (Organization, error) {
 type Organization struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+}
+
+// Struct to hold OTP details
+type OtpDetails struct {
+	OTP        string
+	Email      string
+	ValidUntil time.Time // Add a field to manage OTP expiration
+}
+
+// Global variable to store OTPs
+var otpStore = struct {
+	sync.RWMutex
+	data map[string]OtpDetails
+}{data: make(map[string]OtpDetails)}
+
+func CreateEmailOtp(ctx *gin.Context) {
+	var body struct {
+		Email string `json:"email"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// generate OTP
+	otp := generateOTP()
+
+	// Save OTP details in the hashmap
+	otpStore.Lock() // Lock the map for writing
+	otpStore.data[userID] = OtpDetails{
+		OTP:        otp,
+		Email:      body.Email,
+		ValidUntil: time.Now().Add(5 * time.Minute), // Example expiration time
+	}
+	otpStore.Unlock() // Unlock the map
+	// send OTP to email
+	err = sendEmail(body.Email, otp)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while sending OTP"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully", otp: otp})
+}
+
+func generateOTP() string {
+	// Create a new random number generator
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	otp := r.Intn(1000000)          // Generates a random number between 0 and 999999
+	return fmt.Sprintf("%06d", otp) // Formats as a 6-digit string with leading zeros if needed
+}
+
+func sendEmail(email string, otp string) error {
+	// use your email service provider here
+	// ...
+	fmt.Println(email, otp)
+	return nil
+}
+
+func VerifyOtp(ctx *gin.Context) {
+	var body struct {
+		OTP string `json:"otp"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	otpStore.Lock() // Lock the map for reading
+	details, ok := otpStore.data[userID]
+	otpStore.Unlock() // Unlock the map
+
+	if !ok || details.ValidUntil.Before(time.Now()) {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Invalid OTP or OTP expired"})
+		return
+	}
+
+	if details.OTP != body.OTP {
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Invalid OTP"})
+		return
+	}
+
+	// Update user email in the database
+	var userUUID uuid.UUID
+
+	err = initializer.DB.QueryRow(context.Background(), `
+    UPDATE users
+    SET email = $1
+    WHERE id = $2
+    RETURNING id;`, details.Email, userID).Scan(&userUUID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while saving user to DB"})
+		return
+	}
+
+	_, err = initializer.DB.Query(context.Background(), `UPDATE organizations
+	SET email = $1
+	WHERE owner_id = $2;`, details.Email, userUUID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while saving user to DB"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully"})
+	delete(otpStore.data, userID) // Delete OTP details from the map after successful verification
+}
+
+func GetAccountStatus(ctx *gin.Context) {
+	// get user id from headers
+	userID := ctx.GetHeader("X-User-Id")
+
+	// check for empty user id
+	if userID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "User ID is required",
+			"type":    "error",
+		})
+		return
+	}
+
+	var status bool
+	var id string
+
+	err := initializer.DB.QueryRow(context.Background(), `SELECT status , subscription_id FROM organizations WHERE owner_id = $1`, userID).Scan(&status, &id)
+	if err == sql.ErrNoRows {
+		ctx.JSON(http.StatusNotFound, gin.H{
+			"message": "No organization found for user with ID " + userID,
+			"type":    "error",
+		})
+		return
+	} else if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error while retrieving account status",
+			"type":    "error",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"status": status,
+		"id":     id,
+	})
 }

@@ -1,13 +1,18 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -60,6 +65,39 @@ func CreateInvite(ctx *gin.Context) {
 
 	if inviteExists {
 		ctx.JSON(http.StatusOK, "User already invited to this project")
+		return
+	}
+
+	var isEnoughUser bool
+
+	// Check for user count
+	err = initializer.DB.QueryRow(context.Background(), `
+	SELECT
+	  CASE
+	    WHEN unique_user_count < max_user THEN TRUE
+	    ELSE FALSE
+	  END AS is_user_count_less
+	FROM
+	  (
+	    SELECT
+	      COUNT(DISTINCT oum.user_id) AS unique_user_count,
+	      o.max_user
+	    FROM
+	      public.org_user_mapping oum
+	      JOIN public.organizations o ON oum.org_id = o.id
+	    WHERE
+	      oum.org_id = $1
+	    GROUP BY o.max_user
+	  ) AS subquery;
+	`, body.OrgID).Scan(&isEnoughUser)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while checking user count")
+		return
+	}
+
+	if !isEnoughUser {
+		ctx.JSON(http.StatusForbidden, "Please upgrade your subscription to invite more users")
 		return
 	}
 
@@ -151,6 +189,39 @@ func AcceptInvite(ctx *gin.Context) {
 		}
 	}()
 
+	var isEnoughUser bool
+
+	// Check for user count
+	err = tx.QueryRow(context.Background(), `
+	SELECT
+	  CASE
+	    WHEN unique_user_count < max_user THEN TRUE
+	    ELSE FALSE
+	  END AS is_user_count_less
+	FROM
+	  (
+	    SELECT
+	      COUNT(DISTINCT oum.user_id) AS unique_user_count,
+	      o.max_user
+	    FROM
+	      public.org_user_mapping oum
+	      JOIN public.organizations o ON oum.org_id = o.id
+	    WHERE
+	      oum.org_id = $1
+	    GROUP BY o.max_user
+	  ) AS subquery;
+	`, claims.OrgID).Scan(&isEnoughUser)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while checking user count")
+		return
+	}
+
+	if !isEnoughUser {
+		ctx.JSON(http.StatusForbidden, "Please upgrade your subscription to invite more users")
+		return
+	}
+
 	_, err = tx.Exec(context.Background(), `INSERT INTO user_project_mapping (user_id, project_id , role) VALUES ($1, $2 , $3)`, body.ID, claims.ProjectID, claims.Role)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -173,6 +244,50 @@ func AcceptInvite(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB: " + err.Error(),
 		})
+		return
+	}
+
+	_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 )`, claims.OrgID, body.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error saving data to DB: " + err.Error(),
+		})
+		return
+	}
+
+	var count, subscription_id string
+
+	err = tx.QueryRow(context.Background(), `WITH
+  	updated_count AS (
+    UPDATE public.organizations
+    SET
+      user_count = (
+        SELECT
+          COUNT(DISTINCT user_id)
+        FROM
+          public.org_user_mapping
+        WHERE
+          org_id = $1
+      )
+    WHERE
+      id = $2
+    RETURNING
+      user_count,
+      subscription_id
+  )
+	SELECT
+  *
+	FROM
+  updated_count;`, claims.OrgID, claims.OrgID).Scan(&count, &subscription_id)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to increment user count"})
+		return
+	}
+
+	err = UpdateSubscriptionQuantity(count, subscription_id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update subscription quantity"})
 		return
 	}
 
@@ -210,4 +325,48 @@ func parseJWTToken(token string, hmacSecret []byte) (claims Claims, err error) {
 	}
 
 	return Claims{}, fmt.Errorf("invalid token")
+}
+
+func UpdateSubscriptionQuantity(quantity, subID string) error {
+	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/subscriptions/%s/revise", subID)
+
+	// Define the payload
+	payload := map[string]interface{}{
+		"quantity": quantity,
+	}
+
+	// Convert the payload to JSON
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	// Create the HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Set headers
+	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken) // Ensure utils.PaypalAccessToken is set
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// Execute the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for a successful response
+	if resp.StatusCode != 200 {
+		// Read the response body for additional error information
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected response status: %s, response: %s", resp.Status, string(respBody))
+	}
+
+	log.Println("Subscription quantity updated successfully")
+	return nil
 }
