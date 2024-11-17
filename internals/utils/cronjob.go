@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
@@ -20,6 +20,6 @@ func DeleteExpiredInvites() {
 	 `, thresholdTime)
 
 	if err != nil {
-		fmt.Sprintf("Failed to update expired invites: %s", err)
+		errors.New("Failed to update expired invites: " + err.Error())
 	}
 }

@@ -24,5 +24,5 @@ func ProjectRoutes(router *gin.RouterGroup) {
 	router.POST("/installation/access_token/:id", controller.GetAccessTokenForGithubAppInstallation)
 
 	// Route for long polling (user waiting for project updates)
-	router.GET("/:projectID/updates", utils.LongPollHandler)
+	router.GET("/:projectID/updates", utils.HandleWebSocket)
 }
