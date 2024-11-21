@@ -8,6 +8,8 @@ import (
 	"html/template"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/mailgun/mailgun-go/v4"
@@ -21,6 +23,7 @@ var SenderEmail string
 func InitializeMailgun() {
 	MailgunClient = mailgun.NewMailgun(os.Getenv("MAILGUN_EMAIL_DOMAIN"), os.Getenv("MAILGUN_API_KEY"))
 	SenderEmail = "documentthing@gmail.com"
+	fmt.Println()
 }
 
 // SendOTPEmail sends an email with the OTP to the specified email address
@@ -29,8 +32,19 @@ func SendOTPEmail(email, otp, name string) error {
 		return errors.New("mailgun client not initialized")
 	}
 
+	// Compute and normalize the absolute path
+	absPath, err := filepath.Abs("../../internals/email-templates/otp.html")
+	if err != nil {
+		return fmt.Errorf("error computing absolute path: %w", err)
+	}
+	path := strings.ReplaceAll(absPath, `\`, `/`)
+
+	// Check if the file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return fmt.Errorf("template file not found at path: %s", path)
+	}
 	// Parse the email template
-	tmpl, err := template.ParseFiles("d:/Blocknotes/simpledocs-backend/internals/email-templates/otp.html")
+	tmpl, err := template.ParseFiles(path)
 	if err != nil {
 		return fmt.Errorf("error parsing template: %w", err)
 	}
