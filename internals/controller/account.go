@@ -568,6 +568,7 @@ func CreateEmailOtp(ctx *gin.Context) {
 	// send OTP to email
 	err = utils.SendOTPEmail(body.Email, otp, body.Name)
 	if err != nil {
+		fmt.Println(err.Error())
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while sending OTP"})
 		return
 	}
