@@ -6,6 +6,7 @@ import (
 
 	"github.com/Akshdhiwar/simpledocs-backend/database"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/api"
+	"github.com/Akshdhiwar/simpledocs-backend/internals/controller"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/utils"
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ func init() {
 	}
 	initializer.ConnectToDB()
 	database.Migrations()
+	utils.InitializeMailgun()
 }
 
 func main() {
@@ -30,7 +32,10 @@ func main() {
 	scheduler.Every(1).Hour().Do(utils.DeleteExpiredInvites)
 
 	// paypal access token to be requested after 7 hours
-	scheduler.Every(7).Hour().Do(utils.GetPaypalAccessToken)
+	// scheduler.Every(7).Hour().Do(utils.GetPaypalAccessToken)
+
+	// every 10 min clear the expired token
+	scheduler.Every(10).Minutes().Do(controller.CleanupExpiredOTPs)
 
 	// Start the scheduler in blocking mode
 	scheduler.StartAsync()

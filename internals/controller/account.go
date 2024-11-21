@@ -543,6 +543,7 @@ var otpStore = struct {
 func CreateEmailOtp(ctx *gin.Context) {
 	var body struct {
 		Email string `json:"email"`
+		Name  string `json:"name"`
 	}
 
 	userID := ctx.GetHeader("X-User-Id")
@@ -565,13 +566,13 @@ func CreateEmailOtp(ctx *gin.Context) {
 	}
 	otpStore.Unlock() // Unlock the map
 	// send OTP to email
-	err = sendEmail(body.Email, otp)
+	err = utils.SendOTPEmail(body.Email, otp, body.Name)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error while sending OTP"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully", otp: otp})
+	ctx.JSON(http.StatusOK, gin.H{"message": "OTP sent successfully"})
 }
 
 func generateOTP() string {
@@ -579,13 +580,6 @@ func generateOTP() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	otp := r.Intn(1000000)          // Generates a random number between 0 and 999999
 	return fmt.Sprintf("%06d", otp) // Formats as a 6-digit string with leading zeros if needed
-}
-
-func sendEmail(email string, otp string) error {
-	// use your email service provider here
-	// ...
-	fmt.Println(email, otp)
-	return nil
 }
 
 func VerifyOtp(ctx *gin.Context) {
@@ -674,4 +668,20 @@ func GetAccountStatus(ctx *gin.Context) {
 		"status": status,
 		"id":     id,
 	})
+}
+
+// CleanupExpiredOTPs removes expired OTPs from the store
+func CleanupExpiredOTPs() {
+	now := time.Now()
+
+	otpStore.Lock()
+	defer otpStore.Unlock()
+
+	for key, otp := range otpStore.data {
+		if otp.ValidUntil.Before(now) {
+			delete(otpStore.data, key)
+		}
+	}
+
+	fmt.Println("Cleanup completed at:", now)
 }

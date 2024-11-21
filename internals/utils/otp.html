@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Verification</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f9;
+        color: #333;
+      }
+      .email-container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #ffffff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .header img {
+        height: 40px;
+      }
+      .content h2 {
+        color: #4a4a4a;
+      }
+      .otp-container {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .otp-digit {
+        width: 50px;
+        height: 50px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 2px solid #007bff;
+        color: #007bff;
+        font-size: 24px;
+        font-weight: bold;
+        border-radius: 8px;
+      }
+      .button-container {
+        text-align: center;
+        margin-top: 30px;
+      }
+      .button-container a {
+        background-color: #007bff;
+        color: #ffffff;
+        text-decoration: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 40px;
+        font-size: 12px;
+        color: #888;
+      }
+      .footer a {
+        color: #007bff;
+        text-decoration: none;
+      }
+      /* Base styles */
+      .text-2xl {
+        font-size: 1.5rem; /* 24px */
+        line-height: 2rem; /* 32px */
+      }
+
+      .leading-tight {
+        line-height: 1.25; /* 125% of font-size */
+      }
+
+      .font-extralight {
+        font-weight: 200;
+      }
+
+      .tracking-tighter {
+        letter-spacing: -0.05em;
+      }
+
+      .text-primary {
+        color: var(
+          --primary-color
+        ); /* Define --primary-color in your CSS variables */
+      }
+
+      .font-semibold {
+        font-weight: 600;
+      }
+
+      /* Responsive styles */
+      @media (min-width: 768px) {
+        .md\:text-3xl {
+          font-size: 1.875rem; /* 30px */
+          line-height: 2.25rem; /* 36px */
+        }
+      }
+
+      @media (min-width: 1024px) {
+        .lg\:leading-\[1\.1\] {
+          line-height: 1.1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+      <div class="header">
+        <p
+          class="text-primary text-2xl leading-tight font-extralight tracking-tighter md:text-3xl lg:leading-[1.1]"
+        >
+          <span class="font-semibold">document</span>Thing
+        </p>
+      </div>
+
+      <div class="content">
+        <h2>Hi {{name}},</h2>
+        <p>Thank you for signing up with DocumentThing!</p>
+        <p>
+          To verify your email address and activate your account, please use the
+          One-Time Password (OTP) provided below. This OTP is valid for the next
+          10 minutes:
+        </p>
+        <div class="otp-container">
+          {{#each otpDigits}}
+          <div class="otp-digit">{{this}}</div>
+          {{/each}}
+        </div>
+
+        <p style="margin-top: 20px">
+          If you didn’t request this, please ignore this email or contact our
+          support team if you have concerns.
+        </p>
+
+        <p style="margin-top: 20px">We’re excited to have you on board!</p>
+      </div>
+
+      <div class="footer">
+        <p>
+          <span class="font-semibold">Need Help?</span><br />
+          If you face any issues, feel free to reach out to us at documentthing@gmail.com.
+        </p>
+        <p>© {{year}} Documentthing. All Rights Reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
