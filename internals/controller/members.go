@@ -48,7 +48,10 @@ func GetOrgMembers(ctx *gin.Context) {
 	rows, err := initializer.DB.Query(context.Background(), `
     SELECT 
         upm.role,
-        u.github_name
+        u.github_name,
+		u.name,
+		u.type,
+		u.avatar_url
     FROM 
         user_project_mapping upm
     JOIN 
@@ -64,16 +67,22 @@ func GetOrgMembers(ctx *gin.Context) {
 
 	var users []struct {
 		Role       string
-		GithubName string
+		GithubName *string
+		Name       *string
+		Type       string
+		Avatar     string
 	}
 
 	// Iterate over the rows
 	for rows.Next() {
 		var user struct {
 			Role       string
-			GithubName string
+			GithubName *string
+			Name       *string
+			Type       string
+			Avatar     string
 		}
-		if err := rows.Scan(&user.Role, &user.GithubName); err != nil {
+		if err := rows.Scan(&user.Role, &user.GithubName, &user.Name, &user.Type, &user.Avatar); err != nil {
 			ctx.JSON(http.StatusInternalServerError, fmt.Errorf("failed to scan row: %w", err))
 			return
 		}
@@ -91,6 +100,7 @@ func GetOrgMembers(ctx *gin.Context) {
 		Avatar   string `json:"avatar"`
 		Role     string `json:"role"`
 		IsActive string `json:"isActive"`
+		Type     string `json:"type"`
 	}
 
 	for _, member := range memebers {
@@ -100,21 +110,47 @@ func GetOrgMembers(ctx *gin.Context) {
 			Avatar   string `json:"avatar"`
 			Role     string `json:"role"`
 			IsActive string `json:"isActive"`
+			Type     string `json:"type"`
 		}
 
 		temp.Name = member.Name
 		temp.Avatar = member.Avatar
 		temp.IsActive = "-"
 		temp.Role = "-"
+		temp.Type = "-"
 
 		for _, u := range users {
-			if member.Name == u.GithubName {
+			if u.Type == "google" {
+				continue
+			}
+			if temp.Name == *u.GithubName {
 				temp.IsActive = "In project"
 				temp.Role = u.Role
+				temp.Avatar = u.Avatar
+				temp.Type = u.Type
 			}
 		}
 
 		githubMember = append(githubMember, temp)
+	}
+
+	var temp struct {
+		Name     string `json:"name"`
+		Avatar   string `json:"avatar"`
+		Role     string `json:"role"`
+		IsActive string `json:"isActive"`
+		Type     string `json:"type"`
+	}
+
+	for _, u := range users {
+		if u.Type == "google" {
+			temp.Avatar = u.Avatar
+			temp.Name = *u.Name
+			temp.IsActive = "In project"
+			temp.Role = u.Role
+			temp.Type = u.Type
+			githubMember = append(githubMember, temp)
+		}
 	}
 
 	ctx.JSON(http.StatusOK, githubMember)

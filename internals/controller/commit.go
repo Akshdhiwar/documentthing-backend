@@ -19,6 +19,7 @@ func CommitChanges(ctx *gin.Context) {
 	var body struct {
 		ProjectID string     `json:"project_id"`
 		Content   []Contents `json:"content"`
+		Message   string     `json:"message"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -75,7 +76,7 @@ func CommitChanges(ctx *gin.Context) {
 		return
 	}
 
-	newCommitSha, err := createNewCommit(ctx, projectName, userName, org, latestTreeSha, latestCommistSha)
+	newCommitSha, err := createNewCommit(ctx, projectName, userName, org, latestTreeSha, latestCommistSha, body.Message)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -275,9 +276,9 @@ func createNewTreeForCommit(ctx *gin.Context, repoName string, userName string, 
 
 }
 
-func createNewCommit(ctx *gin.Context, repoName string, userName string, org string, latestTreeSha string, lastCommitSha string) (string, error) {
+func createNewCommit(ctx *gin.Context, repoName string, userName string, org string, latestTreeSha string, lastCommitSha string, message string) (string, error) {
 	requestBody, err := json.Marshal(map[string]interface{}{
-		"message": "Update the content",
+		"message": message,
 		"tree":    latestTreeSha,
 		"parents": []string{lastCommitSha},
 	})
