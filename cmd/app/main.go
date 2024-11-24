@@ -20,6 +20,7 @@ func init() {
 	initializer.ConnectToDB()
 	database.Migrations()
 	utils.InitializeMailgun()
+	initializer.InitiailizeGoogle()
 }
 
 func main() {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -27,6 +28,7 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 	// body creation to get code from payload
 	var body struct {
 		Code string `json:"code"`
+		Type string `json:"type"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -35,88 +37,40 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
-	token, err := getAccessToken(body.Code)
-	fmt.Println(token)
+	var token string
+	var userDetailsRaw models.Users
+
+	if body.Type == "google" {
+		token, _, err = GetGoogleAccessToken(body.Code)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		userDetailsRaw, err = getUserInfo(token)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+	} else {
+		token, err = getGithubAccessToken(body.Code)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		userDetailsRaw, err = GetUserDetailsFromGithub(token)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	userDetails, err := checkIfUserIsPresentOrNot(userDetailsRaw, body.Type)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	userDetails, err := GetUserDetailsFromGithub(token)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	key := utils.DeriveKey(userDetails.GithubName + os.Getenv("ENC_SECRET") + string(userDetails.GithubID))
-
-	encToken, err := utils.Encrypt([]byte(token), key)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while encrypting the token")
-		return
-	}
-
-	_, err = initializer.DB.Exec(context.Background(), "UPDATE users SET github_token = $1 WHERE id = $2", encToken, userDetails.ID)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while updating encrypted token in users table")
-		return
-	}
-
-	userAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"githubName": userDetails.GithubName,
-		"email":      userDetails.Email,
-		"sub":        userDetails.ID,
-		"exp":        time.Now().Add(time.Second * 24).Unix(),
-	})
-
-	accessToken, err := userAccessToken.SignedString([]byte(os.Getenv("JWTSECRET_ACCESS")))
-
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "Error creating token",
-		})
-
-		return
-	}
-
-	userRefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"githubName": userDetails.GithubName,
-		"email":      userDetails.Email,
-		"sub":        userDetails.ID,
-		"exp":        time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days
-	})
-
-	refreshToken, err := userRefreshToken.SignedString([]byte(os.Getenv("JWTSECRET_REFRESH")))
-
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "Error creating refresh token",
-		})
-
-		return
-	}
-
-	ctx.SetSameSite(http.SameSiteNoneMode)
-
-	ctx.SetCookie(
-		"betterDocsAT", // Cookie name
-		accessToken,    // Cookie value
-		3600*24,        // MaxAge: 1 day in seconds
-		"/",            // Path
-		"",             // Domain (leave empty for default)
-		true,           // Secure (true if using HTTPS)
-		true,           // HttpOnly (prevents JavaScript access)
-	)
-
-	ctx.SetCookie(
-		"betterDocsRT", // Cookie name
-		refreshToken,   // Cookie value
-		86400*30,       // MaxAge: 1 day in seconds
-		"/",            // Path
-		"",             // Domain (leave empty for default)
-		true,           // Secure (true if using HTTPS)
-		true,           // HttpOnly (prevents JavaScript access)
-	)
+	setUpCookieAndToken(ctx, userDetails, token)
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"userDetails": userDetails,
@@ -157,98 +111,23 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 		return models.Users{}, fmt.Errorf("error while unmarshalling: %w", err)
 	}
 
-	// Check for status code 400
-
-	fmt.Println(resp.StatusCode, token)
 	if resp.StatusCode != http.StatusOK {
 		return models.Users{}, fmt.Errorf("bad request")
 	}
 
-	githubID := userDetails.ID
-
-	// Check if user exists in the database
-	var exists bool
-	err = initializer.DB.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)", githubID).Scan(&exists)
-	if err != nil {
-		return models.Users{}, fmt.Errorf("database query error: %w", err)
-	}
-
 	var user models.Users
-
-	// If the user does not exist, insert a new record
-	if !exists {
-		// Populate user fields from GitHub response
-		user.AvatarURL = userDetails.AvatarURL
-		user.Company = userDetails.Company
-		user.Email = userDetails.Email
-		user.Twitter = userDetails.TwitterUsername
-		user.GithubID = userDetails.ID
-		user.GithubName = userDetails.Login
-		user.Name = userDetails.Name
-
-		// Start a new transaction to insert the new user into the database
-		tx, err := initializer.DB.Begin(context.Background())
-		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to start a transaction: %w", err)
-		}
-
-		// Ensure transaction is committed or rolled back
-		defer func() {
-			if p := recover(); p != nil {
-				tx.Rollback(context.Background()) // Rollback in case of a panic
-				panic(p)
-			} else if err != nil {
-				tx.Rollback(context.Background()) // Rollback if error occurs
-			} else {
-				err = tx.Commit(context.Background()) // Commit if no error
-			}
-		}()
-
-		// Insert the new user into the users table
-		err = tx.QueryRow(context.Background(),
-			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name)
-	 VALUES ($1, $2, $3, $4, $5, $6, $7)
-	 RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name`,
-			user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name).
-			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name)
-
-		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to save user to DB: %w", err)
-		}
-
-		// Insert a new entry into the organization table and return the uuid
-		var organizationUUID string
-		err = tx.QueryRow(context.Background(),
-			`INSERT INTO organizations (owner_id, name , email)
-	 VALUES ($1, $2 , $3)
-	 RETURNING id`,
-			user.ID, user.GithubName, user.Email).Scan(&organizationUUID)
-
-		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
-		}
-
-		_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 )`, organizationUUID, user.ID)
-		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
-		}
-
-	} else {
-		// Fetch the existing user from the database
-		err = initializer.DB.QueryRow(context.Background(),
-			`SELECT id, avatar_url, company, email, twitter, github_id, github_name, name
-			 FROM users WHERE github_id = $1`, githubID).
-			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name)
-
-		if err != nil {
-			return models.Users{}, fmt.Errorf("unable to get user: %w", err)
-		}
-	}
+	user.AvatarURL = userDetails.AvatarURL
+	user.Company = userDetails.Company
+	user.Email = userDetails.Email
+	user.Twitter = userDetails.TwitterUsername
+	user.GithubID = userDetails.ID
+	user.GithubName = userDetails.Login
+	user.Name = userDetails.Name
 
 	return user, nil
 }
 
-func getAccessToken(code string) (string, error) {
+func getGithubAccessToken(code string) (string, error) {
 	var clientID, clientSecret string
 	clientID = os.Getenv("GITHUB_APP_CLIENT")
 	clientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
@@ -317,6 +196,37 @@ type GitHubTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	Scope       string `json:"scope"`
 	TokenType   string `json:"token_type"`
+}
+
+func GetUserDetailsGoogleGithub(ctx *gin.Context) {
+	loginType := ctx.Query("type")
+	id := ctx.GetHeader("X-User-Id")
+
+	if loginType == "google" {
+		// Fetch the existing user from the database
+		var user models.Users
+		err := initializer.DB.QueryRow(context.Background(),
+			`SELECT id, avatar_url, email, name, google_id
+	FROM users WHERE id = $1`, id).
+			Scan(&user.ID, &user.AvatarURL, &user.Email, &user.Name, &user.GoogleID)
+
+		if err != nil {
+			// Handle the error properly
+			if err == sql.ErrNoRows {
+				ctx.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			} else {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			}
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{
+			"userDetails": user,
+		})
+
+	} else {
+		GetUserDetailsFromGithubFromApi(ctx)
+	}
 }
 
 func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
@@ -396,11 +306,11 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 		user.Name = userDetails.Name
 
 		err := initializer.DB.QueryRow(context.Background(),
-			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name)
-     			VALUES ($1, $2, $3, $4, $5, $6, $7)
-     			RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name`,
-			user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name).
-			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name)
+			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name , type)
+     			VALUES ($1, $2, $3, $4, $5, $6, $7 , $8)
+     			RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name , type`,
+			user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name, "github").
+			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
 
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, "Unable to save data to DB while creating user :"+err.Error())
@@ -415,8 +325,8 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 	}
 
 	err = initializer.DB.QueryRow(context.Background(),
-		`SELECT id , avatar_url , company , email , twitter , github_id , github_name , name FROM users WHERE github_id = $1`, id).
-		Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name)
+		`SELECT id , avatar_url , company , email , twitter , github_id , github_name , name , type FROM users WHERE github_id = $1`, id).
+		Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
 
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Unable to Get user :"+err.Error())
@@ -685,4 +595,232 @@ func CleanupExpiredOTPs() {
 	}
 
 	fmt.Println("Cleanup completed at:", now)
+}
+
+func GetGoogleAccessToken(code string) (string, string, error) {
+	token, err := initializer.GoogleOauthConfig.Exchange(context.Background(), code)
+
+	if err != nil {
+		return "", "", errors.New("Error while exchanging code" + err.Error())
+	}
+
+	return token.AccessToken, token.RefreshToken, nil
+}
+
+func getUserInfo(accessToken string) (models.Users, error) {
+	userInfoEndpoint := "https://www.googleapis.com/oauth2/v2/userinfo"
+	resp, err := http.Get(fmt.Sprintf("%s?access_token=%s", userInfoEndpoint, accessToken))
+	if err != nil {
+		return models.Users{}, err
+	}
+	defer resp.Body.Close()
+
+	var userInfo EmailUser
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return models.Users{}, err
+	}
+
+	var user models.Users
+	user.GoogleID = userInfo.ID
+	user.Email = userInfo.Email
+	user.Name = userInfo.Name
+	user.AvatarURL = userInfo.Picture
+
+	return user, nil
+}
+
+func checkIfUserIsPresentOrNot(user models.Users, loginType string) (models.Users, error) {
+	// Check if user exists in the database
+	var exists bool
+
+	if loginType == "google" {
+		err := initializer.DB.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE google_id = $1)", user.GoogleID).Scan(&exists)
+		if err != nil {
+			return models.Users{}, fmt.Errorf("database query error: %w", err)
+		}
+	} else {
+		err := initializer.DB.QueryRow(context.Background(), "SELECT EXISTS(SELECT 1 FROM users WHERE github_id = $1)", user.GithubID).Scan(&exists)
+		if err != nil {
+			return models.Users{}, fmt.Errorf("database query error: %w", err)
+		}
+	}
+
+	// If the user does not exist, insert a new record
+	if !exists {
+
+		// Start a new transaction to insert the new user into the database
+		tx, err := initializer.DB.Begin(context.Background())
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to start a transaction: %w", err)
+		}
+
+		// Ensure transaction is committed or rolled back
+		defer func() {
+			if p := recover(); p != nil {
+				tx.Rollback(context.Background()) // Rollback in case of a panic
+				panic(p)
+			} else if err != nil {
+				tx.Rollback(context.Background()) // Rollback if error occurs
+			} else {
+				err = tx.Commit(context.Background()) // Commit if no error
+			}
+		}()
+
+		if loginType == "google" {
+			err = tx.QueryRow(context.Background(), `
+			    INSERT INTO users (avatar_url, email, name, google_id , type) 
+				VALUES ($1, $2, $3, $4 , $5)
+				RETURNING id, avatar_url, email, name, google_id, type`,
+				user.AvatarURL, user.Email, user.Name, user.GoogleID, "google").Scan(&user.ID, &user.AvatarURL, &user.Email, &user.Name, &user.GoogleID, &user.Type)
+
+			if err != nil {
+				return models.Users{}, fmt.Errorf("unable to save user to DB: %w", err)
+			}
+		} else {
+			// Insert the new user into the users table
+			err = tx.QueryRow(context.Background(),
+				`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name , type)
+					VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+					RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name , type`,
+				user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name, "github").
+				Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
+
+			if err != nil {
+				return models.Users{}, fmt.Errorf("unable to save user to DB: %w", err)
+			}
+
+		}
+
+		// Insert a new entry into the organization table and return the uuid
+		var organizationUUID string
+		var name string
+
+		if loginType == "google" {
+			name = user.Name
+		} else {
+			name = user.GithubName
+		}
+
+		err = tx.QueryRow(context.Background(),
+			`INSERT INTO organizations (owner_id, name , email)
+	 VALUES ($1, $2 , $3)
+	 RETURNING id`,
+			user.ID, name, user.Email).Scan(&organizationUUID)
+
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
+		}
+
+		_, err = tx.Exec(context.Background(), `INSERT INTO org_user_mapping (org_id, user_id) VALUES ($1, $2 )`, organizationUUID, user.ID)
+		if err != nil {
+			return models.Users{}, fmt.Errorf("unable to insert into organization: %w", err)
+		}
+
+	} else {
+		if loginType == "google" {
+			// Fetch the existing user from the database
+			err := initializer.DB.QueryRow(context.Background(),
+				`SELECT id, avatar_url, email, name , google_id , type
+		 FROM users WHERE google_id = $1`, user.GoogleID).
+				Scan(&user.ID, &user.AvatarURL, &user.Email, &user.Name, &user.GoogleID, &user.Type)
+
+			if err != nil {
+				return models.Users{}, fmt.Errorf("unable to get user: %w", err)
+			}
+		} else {
+			// Fetch the existing user from the database
+			err := initializer.DB.QueryRow(context.Background(),
+				`SELECT id, avatar_url, company, email, twitter, github_id, github_name, name, type
+		 FROM users WHERE github_id = $1`, user.GithubID).
+				Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
+
+			if err != nil {
+				return models.Users{}, fmt.Errorf("unable to get user: %w", err)
+			}
+		}
+	}
+
+	return user, nil
+}
+
+type EmailUser struct {
+	Email         string `json:"email"`
+	FamilyName    string `json:"family_name"`
+	GivenName     string `json:"given_name"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture"`
+	VerifiedEmail bool   `json:"verified_email"`
+}
+
+func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token string) {
+	key := utils.DeriveKey(userDetails.ID.String() + os.Getenv("ENC_SECRET"))
+
+	encToken, err := utils.Encrypt([]byte(token), key)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while encrypting the token")
+		return
+	}
+
+	_, err = initializer.DB.Exec(context.Background(), "UPDATE users SET token = $1 WHERE id = $2", encToken, userDetails.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while updating encrypted token in users table")
+		return
+	}
+
+	userAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"githubName": userDetails.GithubName,
+		"email":      userDetails.Email,
+		"sub":        userDetails.ID,
+		"exp":        time.Now().Add(time.Second * 24).Unix(),
+	})
+
+	accessToken, err := userAccessToken.SignedString([]byte(os.Getenv("JWTSECRET_ACCESS")))
+
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "Error creating token",
+		})
+
+		return
+	}
+
+	userRefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"githubName": userDetails.GithubName,
+		"email":      userDetails.Email,
+		"sub":        userDetails.ID,
+		"exp":        time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days
+	})
+
+	refreshToken, err := userRefreshToken.SignedString([]byte(os.Getenv("JWTSECRET_REFRESH")))
+
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "Error creating refresh token",
+		})
+
+		return
+	}
+
+	ctx.SetSameSite(http.SameSiteNoneMode)
+
+	ctx.SetCookie(
+		"betterDocsAT", // Cookie name
+		accessToken,    // Cookie value
+		3600*24,        // MaxAge: 1 day in seconds
+		"/",            // Path
+		"",             // Domain (leave empty for default)
+		true,           // Secure (true if using HTTPS)
+		true,           // HttpOnly (prevents JavaScript access)
+	)
+
+	ctx.SetCookie(
+		"betterDocsRT", // Cookie name
+		refreshToken,   // Cookie value
+		86400*30,       // MaxAge: 1 day in seconds
+		"/",            // Path
+		"",             // Domain (leave empty for default)
+		true,           // Secure (true if using HTTPS)
+		true,           // HttpOnly (prevents JavaScript access)
+	)
 }

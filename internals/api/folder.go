@@ -11,7 +11,7 @@ func FolderRoutes(router *gin.RouterGroup) {
 	router.Use(middleware.AuthMiddleware)
 
 	// GET Api to get folder of Repo from specified id
-	router.GET("/:id", controller.GetFolder)
+	router.GET("/:id/:type", controller.GetFolder)
 
 	// Update Folder
 	router.POST("/update", controller.UpdateFolder)

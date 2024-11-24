@@ -19,6 +19,7 @@ import (
 func GetFileContents(ctx *gin.Context) {
 	projId := ctx.Query("proj")
 	fileId := ctx.Query("file")
+	t := ctx.Query("t")
 
 	if projId == "" || fileId == "" {
 		ctx.JSON(http.StatusBadRequest, "Please provide required query")
@@ -61,7 +62,7 @@ func GetFileContents(ctx *gin.Context) {
 		return
 	}
 
-	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org)
+	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org, t)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -71,7 +72,7 @@ func GetFileContents(ctx *gin.Context) {
 
 }
 
-func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID, org string) (string, error) {
+func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID, org string, t string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoAdmin, repoName, fileId)
@@ -84,7 +85,7 @@ func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin strin
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
-	token, err := utils.GetAccessTokenFromBackend(ctx)
+	token, err := GetAccessTokenFromBackendTypeGoogle(ctx, t, repoName)
 	if err != nil {
 		return "", err
 	}
@@ -320,7 +321,7 @@ func DeleteFiles(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName)
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -557,7 +558,7 @@ func UpdateFileName(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName)
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return

@@ -88,7 +88,7 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
-	_, err = tx.Exec(context.Background(), `INSERT INTO user_project_mapping (user_id , project_id) values ($1 , $2)`, userId, projectID)
+	_, err = tx.Exec(context.Background(), `INSERT INTO user_project_mapping (user_id , project_id , role) values ($1 , $2 , $3)`, userId, projectID, "Admin")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB" + err.Error(),
@@ -234,11 +234,10 @@ func createRepoContents(repoName string, name string, folder string, ctx *gin.Co
 
 func GetProjects(ctx *gin.Context) {
 	// Retrieve name and id from the query parameters
-	name := ctx.Query("name")
 	idStr := ctx.Query("id")
 
 	// Validate the parameters
-	if name == "" || idStr == "" {
+	if idStr == "" {
 		ctx.JSON(http.StatusBadRequest, "Missing required query parameters: name or id")
 		return
 	}
@@ -250,11 +249,11 @@ func GetProjects(ctx *gin.Context) {
 		return
 	}
 
-	repos, err := getAllRepos(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err.Error())
-		return
-	}
+	// repos, err := getAllRepos(ctx)
+	// if err != nil {
+	// 	ctx.JSON(http.StatusInternalServerError, err.Error())
+	// 	return
+	// }
 
 	// Query the database for projects
 	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner , up.role
@@ -286,26 +285,26 @@ func GetProjects(ctx *gin.Context) {
 
 	// check if name of project is present in repos and only send the required projects in api
 
-	var requiredProjects []Project
+	// var requiredProjects []Project
 
-	for i := 0; i < len(projects); i++ {
-		for j := 0; j < len(repos); j++ {
-			// Access the repository directly since repos[j] is of type models.Repository
-			repo := repos[j]
+	// for i := 0; i < len(projects); i++ {
+	// 	for j := 0; j < len(repos); j++ {
+	// 		// Access the repository directly since repos[j] is of type models.Repository
+	// 		repo := repos[j]
 
-			// Compare the name directly, no need for type assertion
-			if repo.Name == projects[i].Name && repo.Owner.Login == projects[i].RepoOwner {
-				var proj Project
-				proj.Id = projects[i].Id
-				proj.Name = projects[i].Name
-				proj.Role = projects[i].Role
-				proj.RepoOwner = projects[i].RepoOwner
-				requiredProjects = append(requiredProjects, proj)
-			}
-		}
-	}
+	// 		// Compare the name directly, no need for type assertion
+	// 		if repo.Name == projects[i].Name && repo.Owner.Login == projects[i].RepoOwner {
+	// 			var proj Project
+	// 			proj.Id = projects[i].Id
+	// 			proj.Name = projects[i].Name
+	// 			proj.Role = projects[i].Role
+	// 			proj.RepoOwner = projects[i].RepoOwner
+	// 			requiredProjects = append(requiredProjects, proj)
+	// 		}
+	// 	}
+	// }
 
-	ctx.JSON(http.StatusOK, requiredProjects)
+	ctx.JSON(http.StatusOK, projects)
 
 }
 

@@ -69,6 +69,7 @@ func GetOrgMembersAdminOnly(ctx *gin.Context) {
 
 	// Define a slice of structs to hold multiple members
 	var members []struct {
+		Name        *string `json:"name"`
 		ProjectName string  `json:"project_name"`
 		GithubName  *string `json:"github_name"`
 		Role        *string `json:"role"`
@@ -77,6 +78,7 @@ func GetOrgMembersAdminOnly(ctx *gin.Context) {
 	// Execute the query
 	rows, err := initializer.DB.Query(context.Background(), `
 		SELECT DISTINCT
+			u.name,
 			u.github_name,
 			p.name AS project_name,
 			opum.role AS role
@@ -100,22 +102,28 @@ func GetOrgMembersAdminOnly(ctx *gin.Context) {
 	// Iterate over the result set
 	for rows.Next() {
 		var member struct {
+			Name        *string `json:"name"`
 			ProjectName string  `json:"project_name"`
 			GithubName  *string `json:"github_name"`
 			Role        *string `json:"role"`
 		}
 
 		// Initialize fields with default values in case of NULLs
-		var githubName, role sql.NullString
+		var name, githubName, role sql.NullString
 		var projectName sql.NullString
 
 		// Scan each row into temporary variables
-		if err := rows.Scan(&githubName, &projectName, &role); err != nil {
+		if err := rows.Scan(&name, &githubName, &projectName, &role); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan member"})
 			return
 		}
 
 		// Assign values, setting to `nil` if they are NULL
+		if name.Valid {
+			member.Name = &name.String
+		} else {
+			member.Name = nil
+		}
 		if githubName.Valid {
 			member.GithubName = &githubName.String
 		} else {

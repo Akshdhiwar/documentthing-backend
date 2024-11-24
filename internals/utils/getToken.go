@@ -24,12 +24,12 @@ func GetAccessTokenFromBackend(ctx *gin.Context) (string, error) {
 	var encryptedToken, name string
 	var githubID int
 
-	err := initializer.DB.QueryRow(context.Background(), `SELECT github_token , github_name , github_id from users WHERE id = $1`, id).Scan(&encryptedToken, &name, &githubID)
+	err := initializer.DB.QueryRow(context.Background(), `SELECT token , github_name , github_id from users WHERE id = $1`, id).Scan(&encryptedToken, &name, &githubID)
 	if err != nil {
 		return "", err
 	}
 
-	key := DeriveKey(name + os.Getenv("ENC_SECRET") + string(githubID))
+	key := DeriveKey(id + os.Getenv("ENC_SECRET"))
 
 	token, err := Decrypt(encryptedToken, key)
 	if err != nil {

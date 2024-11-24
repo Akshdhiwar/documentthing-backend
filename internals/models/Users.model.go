@@ -16,4 +16,6 @@ type Users struct {
 	GithubID   int64
 	GithubName string
 	Name       string
+	GoogleID   string
+	Type       string
 }

@@ -3,11 +3,13 @@ package controller
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
 	"github.com/Akshdhiwar/simpledocs-backend/internals/models"
@@ -18,6 +20,7 @@ import (
 
 func GetFolder(ctx *gin.Context) {
 	id := ctx.Param("id")
+	t := ctx.Param("type")
 
 	// parsing UUID for project id
 	projectID, err := uuid.Parse(id)
@@ -52,7 +55,7 @@ func GetFolder(ctx *gin.Context) {
 		return
 	}
 
-	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName)
+	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName, t)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -61,7 +64,7 @@ func GetFolder(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, content)
 }
 
-func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string, org string) (string, error) {
+func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string, org string, t string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
@@ -75,7 +78,7 @@ func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string,
 		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 
-	token, err := utils.GetAccessTokenFromBackend(ctx)
+	token, err := GetAccessTokenFromBackendTypeGoogle(ctx, t, repoName)
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +175,7 @@ func UpdateFolder(ctx *gin.Context) {
 	}
 
 	// Retrieve folder structure from GitHub
-	folderBase64, err := getFolderJsonFromGithub(ctx, repoName, userName, org)
+	folderBase64, err := getFolderJsonFromGithub(ctx, repoName, userName, org, "")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error retrieving folder structure from GitHub: " + err.Error()})
 		return
@@ -387,4 +390,43 @@ func getFolderSHA(ctx *gin.Context, repoName string, userName string, org string
 	// Return the content and SHA in a map
 	return githubResp.Sha, nil
 
+}
+
+func GetAccessTokenFromBackendTypeGoogle(ctx *gin.Context, t string, repoName string) (string, error) {
+
+	id := ctx.GetHeader("X-User-Id")
+	var encryptedToken, name string
+	var githubID int
+
+	if t == "google" {
+		err := initializer.DB.QueryRow(context.Background(), `
+			SELECT
+		u.id
+	  FROM
+		public.projects p
+		JOIN public.users u ON p.owner = u.id
+	  WHERE
+		p.name = $1;
+		`, repoName).Scan(&id)
+
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("project not found")
+		} else if err != nil {
+			return "", err
+		}
+	}
+
+	err := initializer.DB.QueryRow(context.Background(), `SELECT token , github_name , github_id from users WHERE id = $1`, id).Scan(&encryptedToken, &name, &githubID)
+	if err != nil {
+		return "", err
+	}
+
+	key := utils.DeriveKey(id + os.Getenv("ENC_SECRET"))
+
+	token, err := utils.Decrypt(encryptedToken, key)
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
 }

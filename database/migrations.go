@@ -17,7 +17,9 @@ func Migrations() {
 		updated_at TIMESTAMPTZ DEFAULT now(),
 		deleted_at TIMESTAMPTZ,
 		name TEXT NOT NULL, 
-		owner UUID NOT NULL
+		owner UUID NOT NULL,
+		org TEXT DEFAULT NULL,
+		repo_owner TEXT DEFAULT NULL
 	)`)
 
 	if err != nil {
@@ -36,7 +38,10 @@ func Migrations() {
 		github_id INTEGER,
 		github_name TEXT,
 		name TEXT,
-		twitter TEXT
+		twitter TEXT,
+		google_id TEXT,
+		token TEXT,
+		type TEXT
 	)`)
 
 	if err != nil {
@@ -68,12 +73,14 @@ func Migrations() {
         deleted_at TIMESTAMPTZ,
         name TEXT NOT NULL,
         owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        email TEXT DEFAULT NULL,
-        subscription_id TEXT DEFAULT NULL,
-        status BOOLEAN DEFAULT FALSE,
-		max_user INT DEFAULT NULL,
-		subs_name TEXT DEFAULT NULL
-    )`)
+        email TEXT DEFAULT NULL
+		)`)
+	// subscription_id TEXT DEFAULT NULL,
+	// status BOOLEAN DEFAULT FALSE,
+	// max_user INT DEFAULT NULL,
+	// subs_name TEXT DEFAULT NULL,
+	// plan_id TEXT DEFAULT NULL,
+	// user_count INT DEFAULT NULL
 
 	if err != nil {
 		log.Fatalf("Failed to execute migration: %v", err)
@@ -87,6 +94,7 @@ func Migrations() {
 		deleted_at TIMESTAMPTZ,
 		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		role TEXT NOT NULL,
 		CONSTRAINT user_project_unique UNIQUE (user_id, project_id)
 	)`)
 
@@ -114,7 +122,7 @@ func Migrations() {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         created_at TIMESTAMPTZ DEFAULT now(),
         updated_at TIMESTAMPTZ DEFAULT now(),
-        organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
     )`)
 
