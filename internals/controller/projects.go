@@ -321,43 +321,43 @@ type GitHubRepoResponse struct {
 	Items             []interface{} `json:"items"`
 }
 
-func getAllRepos(ctx *gin.Context) ([]models.Repository, error) {
-	// Create a new HTTP request to GitHub API
-	url := "https://api.github.com/user/repos" // Note: Use "user/repos" for authenticated user's repos
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create new HTTP request: %w", err)
-	}
+// func getAllRepos(ctx *gin.Context) ([]models.Repository, error) {
+// 	// Create a new HTTP request to GitHub API
+// 	url := "https://api.github.com/user/repos" // Note: Use "user/repos" for authenticated user's repos
+// 	req, err := http.NewRequest("GET", url, nil)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to create new HTTP request: %w", err)
+// 	}
 
-	token, err := utils.GetAccessTokenFromBackend(ctx)
-	if err != nil {
-		return nil, err
-	}
+// 	token, err := utils.GetAccessTokenFromBackend(ctx)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/json")
+// 	// Set the Authorization header with the token from the request header
+// 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+// 	req.Header.Set("Content-Type", "application/json")
 
-	// Make the HTTP request to GitHub API
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
+// 	// Make the HTTP request to GitHub API
+// 	resp, err := http.DefaultClient.Do(req)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to make HTTP request: %w", err)
+// 	}
+// 	defer resp.Body.Close()
 
-	// Handle response from GitHub API
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get repository: %s", resp.Status)
-	}
+// 	// Handle response from GitHub API
+// 	if resp.StatusCode != http.StatusOK {
+// 		return nil, fmt.Errorf("failed to get repository: %s", resp.Status)
+// 	}
 
-	// Decode the JSON response into a slice of Repository structs
-	var githubResp []models.Repository
-	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w", err)
-	}
+// 	// Decode the JSON response into a slice of Repository structs
+// 	var githubResp []models.Repository
+// 	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+// 		return nil, fmt.Errorf("failed to decode response body: %w", err)
+// 	}
 
-	return githubResp, nil
-}
+// 	return githubResp, nil
+// }
 
 // func createRepo(name string, ctx *gin.Context, org string) (models.Repository, error) {
 // 	// Prepare the request body for GitHub API
