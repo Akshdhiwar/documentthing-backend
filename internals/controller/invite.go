@@ -20,11 +20,13 @@ import (
 
 func CreateInvite(ctx *gin.Context) {
 	var body struct {
-		GithubName string `json:"github_name"`
-		Email      string `json:"email"`
-		ProjectID  string `json:"project_id"`
-		Role       string `json:"role"`
-		OrgID      string `json:"org_id"`
+		GithubName  string `json:"github_name"`
+		Email       string `json:"email"`
+		ProjectID   string `json:"project_id"`
+		Role        string `json:"role"`
+		OrgID       string `json:"org_id"`
+		InviteBy    string `json:"invite_by"`
+		ProjectName string `json:"project_name"`
 	}
 
 	err := ctx.ShouldBindJSON(&body)
@@ -35,6 +37,27 @@ func CreateInvite(ctx *gin.Context) {
 
 	if body.GithubName == "" || body.Email == "" || body.ProjectID == "" {
 		ctx.JSON(http.StatusBadRequest, "Please provide all the required payload")
+		return
+	}
+
+	//check if email is already is present or not
+	var isEmailPresent bool
+
+	err = initializer.DB.QueryRow(context.Background(), `SELECT
+  EXISTS (
+    SELECT
+      1
+    FROM
+      public.users u
+      JOIN public.user_project_mapping upm ON u.id = upm.user_id
+      JOIN public.projects p ON upm.project_id = p.id
+    WHERE
+      u.email = $1
+      AND p.id = $2
+  );`, body.Email, body.ProjectID).Scan(&isEmailPresent)
+
+	if isEmailPresent {
+		ctx.JSON(http.StatusConflict, "Email already exists for this project")
 		return
 	}
 
@@ -103,9 +126,14 @@ func CreateInvite(ctx *gin.Context) {
 
 	// create a record in invite table
 	var id uuid.UUID
-	initializer.DB.QueryRow(context.Background(), `
-		INSERT INTO invite (email , user_name , project_id , role) VALUES ($1, $2, $3 , $4) RETURNING id
-	`, body.Email, body.GithubName, body.ProjectID, body.Role).Scan(&id)
+	err = initializer.DB.QueryRow(context.Background(), `
+		INSERT INTO invite (email , user_name , project_id , role , invited_by , project_name) VALUES ($1, $2, $3 , $4 , $5 , $6) RETURNING id
+	`, body.Email, body.GithubName, body.ProjectID, body.Role, body.InviteBy, body.ProjectName).Scan(&id)
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while inserting data into invite table")
+		return
+	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"githubName": body.GithubName,
@@ -124,6 +152,12 @@ func CreateInvite(ctx *gin.Context) {
 			"message": "Error creating token",
 		})
 
+		return
+	}
+
+	err = utils.SendInviteMail(tokenString, body.GithubName, body.ProjectName, body.InviteBy, body.Role, body.Email)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while sending invite mail")
 		return
 	}
 

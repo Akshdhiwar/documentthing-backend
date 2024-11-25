@@ -206,9 +206,9 @@ func GetUserDetailsGoogleGithub(ctx *gin.Context) {
 		// Fetch the existing user from the database
 		var user models.Users
 		err := initializer.DB.QueryRow(context.Background(),
-			`SELECT id, avatar_url, email, name, google_id
+			`SELECT id, avatar_url, email, name, google_id , type
 	FROM users WHERE id = $1`, id).
-			Scan(&user.ID, &user.AvatarURL, &user.Email, &user.Name, &user.GoogleID)
+			Scan(&user.ID, &user.AvatarURL, &user.Email, &user.Name, &user.GoogleID, &user.Type)
 
 		if err != nil {
 			// Handle the error properly

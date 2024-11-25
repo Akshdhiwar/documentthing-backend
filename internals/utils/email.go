@@ -164,3 +164,84 @@ func SendOTPEmail(email, otp, name string) error {
 	log.Printf("OTP sent to %s successfully", email)
 	return nil
 }
+
+func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error {
+
+	if MailgunClient == nil {
+		return errors.New("mailgun client not initialized")
+	}
+
+	htmlTemplate := `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invitation to Join {{ .ProjectName }}</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; background-color: #f9f9f9; margin: 0; padding: 0;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border: 1px solid #dddddd; border-radius: 8px; overflow: hidden;">
+        <!-- Header -->
+        <div style="text-align: center; background-color: #f4f4f4; padding: 20px;">
+            <h2 style="margin: 0;">{{ .ProjectName }} Invitation</h2>
+        </div>
+        
+        <!-- Body -->
+        <div style="padding: 20px; text-align: center;">
+            <h1 style="color: #333333; margin: 0 0 20px;">Dear {{ .Name }},</h1>
+            <p style="margin: 10px 0;">We are pleased to inform you that {{ .InviterByName }} has invited you to collaborate on the project <strong>{{ .ProjectName }}</strong> as a <strong>{{ .Role }}</strong>.</p>
+            <p style="margin: 10px 0;">To accept the invitation and set up your account, please click the button below:</p>
+            <a href="{{ .URL }}" style="display: inline-block; padding: 12px 20px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">Accept Invitation</a>
+            <p style="margin: 10px 0;">If the button does not work, you can also use the following link:</p>
+            <p style="margin: 10px 0;"><a href="{{ .URL }}" style="color: #007bff; text-decoration: none;">{{ .URL }}</a></p>
+            <p style="margin: 10px 0;"><strong>Note:</strong> This invitation is valid for 48 hours and will expire after that.</p>
+            <p style="margin: 10px 0;">Should you have any questions or require assistance, feel free to contact us. We look forward to working with you!</p>
+        </div>
+        
+        <!-- Footer -->
+        <div style="text-align: center; font-size: 12px; color: #777777; padding: 10px; background-color: #f4f4f4;">
+            <p style="margin: 5px 0;">Best regards,</p>
+            <p style="margin: 5px 0;">DocumentThing Team</p>
+            <p style="margin: 5px 0;">&copy; 2024 DocumentThing. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>`
+
+	// Parse the inline HTML template
+	tmpl, err := template.New("inviteMail").Parse(htmlTemplate)
+	if err != nil {
+		return fmt.Errorf("error parsing inline template: %w", err)
+	}
+
+	// Data to render the template
+	data := map[string]interface{}{
+		"Name":          name,
+		"InviterByName": invitedBy,
+		"ProjectName":   projectName,
+		"Role":          role,
+		"URL":           fmt.Sprintf(`http://localhost:5173/account/login?invite="%s"`, jwt),
+	}
+
+	// Render the template
+	var bodyBuffer bytes.Buffer
+	if err := tmpl.Execute(&bodyBuffer, data); err != nil {
+		return fmt.Errorf("error rendering template: %w", err)
+	}
+
+	// Create the email message
+	subject := "Invitation to Collaborate on" + " " + projectName
+	message := mailgun.NewMessage(SenderEmail, subject, "", email)
+	message.SetHTML(bodyBuffer.String()) // Set the HTML body
+
+	// Set a timeout for the API call
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Send the email
+	_, _, err = MailgunClient.Send(ctx, message)
+	if err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+
+	return nil
+}

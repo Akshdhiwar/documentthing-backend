@@ -21,6 +21,7 @@ import (
 func GetFolder(ctx *gin.Context) {
 	id := ctx.Param("id")
 	t := ctx.Param("type")
+	userID := ctx.GetHeader("X-User-Id")
 
 	// parsing UUID for project id
 	projectID, err := uuid.Parse(id)
@@ -34,25 +35,45 @@ func GetFolder(ctx *gin.Context) {
 	// getting details from DB
 	var projectName, repoName, orgName string
 
-	err = initializer.DB.QueryRow(context.Background(), `
-	SELECT 
-	    u.github_name,
-	    p.name AS project_name,
-		 COALESCE(p.org, '') AS project_org
+	if t == "google" {
+		err = initializer.DB.QueryRow(context.Background(), `SELECT
+  			repo_owner,
+  				NAME,
+  				COALESCE(org, '') AS org
+				FROM
+  				projects
+				WHERE
+  			id = $1;`, projectID).Scan(&repoName, &projectName, &orgName)
+
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Error getting project details from DB : " + err.Error(),
+			})
+			return
+		}
+
+	} else {
+		err = initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
 	FROM 
-	    user_project_mapping upm
+		user_project_mapping upm
 	JOIN 
-	    users u ON upm.user_id = u.id
+		users u ON upm.user_id = u.id
 	JOIN 
-	    projects p ON upm.project_id = p.id
+		projects p ON upm.project_id = p.id
 	WHERE 
-	    p.id = $1;
-	`, projectID).Scan(&repoName, &projectName, &orgName)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Error getting project details from DB : " + err.Error(),
-		})
-		return
+		p.id = $1
+		AND u.id = $2;
+		`, projectID, userID).Scan(&repoName, &projectName, &orgName)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Error getting project details from DB : " + err.Error(),
+			})
+			return
+		}
 	}
 
 	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName, t)

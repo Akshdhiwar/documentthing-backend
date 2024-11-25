@@ -58,7 +58,9 @@ func Migrations() {
 		project_id UUID NOT NULL,
 		is_accepted BOOLEAN DEFAULT FALSE,
 		is_revoked BOOLEAN DEFAULT FALSE,
-		role TEXT NOT NULL
+		role TEXT NOT NULL,
+		invited_by TEXT NOT NULL,
+		project_name TEXT NOT NULL
 	)`)
 
 	if err != nil {

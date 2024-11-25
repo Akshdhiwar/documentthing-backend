@@ -20,6 +20,7 @@ func GetFileContents(ctx *gin.Context) {
 	projId := ctx.Query("proj")
 	fileId := ctx.Query("file")
 	t := ctx.Query("t")
+	userID := ctx.GetHeader("X-User-Id")
 
 	if projId == "" || fileId == "" {
 		ctx.JSON(http.StatusBadRequest, "Please provide required query")
@@ -41,25 +42,45 @@ func GetFileContents(ctx *gin.Context) {
 	// getting details from DB
 	var projectName, userName, org string
 
-	err = initializer.DB.QueryRow(context.Background(), `
-	SELECT 
-	    u.github_name,
-	    p.name AS project_name,
-		 COALESCE(p.org, '') AS project_org
+	if t == "google" {
+		err = initializer.DB.QueryRow(context.Background(), `SELECT
+  			repo_owner,
+  				NAME,
+  				COALESCE(org, '') AS org
+				FROM
+  				projects
+				WHERE
+  			id = $1;`, projectId).Scan(&userName, &projectName, &org)
+
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Error getting project details from DB : " + err.Error(),
+			})
+			return
+		}
+
+	} else {
+		err = initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
 	FROM 
-	    user_project_mapping upm
+		user_project_mapping upm
 	JOIN 
-	    users u ON upm.user_id = u.id
+		users u ON upm.user_id = u.id
 	JOIN 
-	    projects p ON upm.project_id = p.id
+		projects p ON upm.project_id = p.id
 	WHERE 
-	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName, &org)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Error getting project details from DB : " + err.Error(),
-		})
-		return
+		p.id = $1
+		AND u.id = $2;
+		`, projectId, userID).Scan(&userName, &projectName, &org)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": "Error getting project details from DB : " + err.Error(),
+			})
+			return
+		}
 	}
 
 	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org, t)
