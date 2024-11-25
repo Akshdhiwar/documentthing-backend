@@ -56,6 +56,11 @@ func CreateInvite(ctx *gin.Context) {
       AND p.id = $2
   );`, body.Email, body.ProjectID).Scan(&isEmailPresent)
 
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while retriving user data from Database")
+		return
+	}
+
 	if isEmailPresent {
 		ctx.JSON(http.StatusConflict, "Email already exists for this project")
 		return
