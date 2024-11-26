@@ -213,13 +213,22 @@ func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error
 		return fmt.Errorf("error parsing inline template: %w", err)
 	}
 
+	var baseURL string
+
+	// Corrected: use os.Getenv instead of os.GetEnv
+	if os.Getenv("RAILS_ENVIRONMENT") == "PROD" {
+    		baseURL = "https://documentthing.com"
+	} else {
+    		baseURL = "http://localhost:5173"
+	}
+
 	// Data to render the template
 	data := map[string]interface{}{
 		"Name":          name,
 		"InviterByName": invitedBy,
 		"ProjectName":   projectName,
 		"Role":          role,
-		"URL":           fmt.Sprintf(`http://localhost:5173/account/login?invite="%s"`, jwt),
+		"URL":           fmt.Sprintf(`%s/account/login?invite="%s"`,baseURL , jwt),
 	}
 
 	// Render the template
