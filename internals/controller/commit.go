@@ -22,6 +22,8 @@ func CommitChanges(ctx *gin.Context) {
 		Message   string     `json:"message"`
 	}
 
+	userID := ctx.GetHeader("X-User-Id")
+
 	err := ctx.ShouldBindJSON(&body)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Error while binding body")
@@ -38,19 +40,20 @@ func CommitChanges(ctx *gin.Context) {
 	var projectName, userName, org string
 
 	err = initializer.DB.QueryRow(context.Background(), `
-	SELECT 
-	    u.github_name,
-	    p.name AS project_name,
-		 COALESCE(p.org, '') AS project_org
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
 	FROM 
-	    user_project_mapping upm
+		user_project_mapping upm
 	JOIN 
-	    users u ON upm.user_id = u.id
+		users u ON upm.user_id = u.id
 	JOIN 
-	    projects p ON upm.project_id = p.id
+		projects p ON upm.project_id = p.id
 	WHERE 
-	    p.id = $1;
-	`, projectId).Scan(&userName, &projectName, &org)
+		p.id = $1
+		AND u.id = $2;
+		`, projectId, userID).Scan(&userName, &projectName, &org)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error getting project details from DB : " + err.Error(),
