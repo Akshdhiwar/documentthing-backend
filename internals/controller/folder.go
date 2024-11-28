@@ -115,6 +115,12 @@ func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string,
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == 401 {
+		utils.GetNewAccessTokenFromGithub(ctx, repoName, t)
+		// Re-run the function after refreshing the token
+		return getFolderJsonFromGithub(ctx, repoName, userName, org, t)
+	}
+
 	// Handle response from GitHub API
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to get repository: %s", resp.Status)

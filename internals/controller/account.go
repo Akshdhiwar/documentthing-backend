@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -37,11 +36,11 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
-	var token string
+	var token, refreshToken string
 	var userDetailsRaw models.Users
 
 	if body.Type == "google" {
-		token, _, err = GetGoogleAccessToken(body.Code)
+		token, refreshToken, err = GetGoogleAccessToken(body.Code)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, err.Error())
 			return
@@ -52,7 +51,7 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 			return
 		}
 	} else {
-		token, err = getGithubAccessToken(body.Code)
+		token, refreshToken, err = getGithubAccessToken(body.Code)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, err.Error())
 			return
@@ -70,7 +69,7 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
-	setUpCookieAndToken(ctx, userDetails, token)
+	setUpCookieAndToken(ctx, userDetails, token, refreshToken)
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"userDetails": userDetails,
@@ -127,13 +126,13 @@ func GetUserDetailsFromGithub(token string) (models.Users, error) {
 	return user, nil
 }
 
-func getGithubAccessToken(code string) (string, error) {
+func getGithubAccessToken(code string) (string, string, error) {
 	var clientID, clientSecret string
 	clientID = os.Getenv("GITHUB_APP_CLIENT")
 	clientSecret = os.Getenv("GITHUB_APP_CLIENT_SECRET")
 
 	if clientID == "" || clientSecret == "" {
-		return "", fmt.Errorf("missing client ID or secret")
+		return "", "", fmt.Errorf("missing client ID or secret")
 	}
 
 	// Set up the request body as JSON
@@ -144,7 +143,7 @@ func getGithubAccessToken(code string) (string, error) {
 	}
 	requestJSON, err := json.Marshal(requestBodyMap)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request body: %w", err)
+		return "", "", fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
 	// Create the POST request
@@ -154,7 +153,7 @@ func getGithubAccessToken(code string) (string, error) {
 		bytes.NewBuffer(requestJSON),
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -162,40 +161,43 @@ func getGithubAccessToken(code string) (string, error) {
 	// Send the request and get the response
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return "", "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	// Read and parse the response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return "", "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var tokenResponse GitHubTokenResponse
 	err = json.Unmarshal(respBody, &tokenResponse)
 	if err != nil {
-		return "", fmt.Errorf("failed to unmarshal response body: %w", err)
+		return "", "", fmt.Errorf("failed to unmarshal response body: %w", err)
 	}
 
 	if tokenResponse.AccessToken == "" {
-		return "", fmt.Errorf("access token not found in response")
+		return "", "", fmt.Errorf("access token not found in response")
 	}
 
 	// Log the token response for debugging (use a logging framework in production)
 	fmt.Printf("Token Response: %+v\n", tokenResponse)
 
-	return tokenResponse.AccessToken, nil
+	return tokenResponse.AccessToken, tokenResponse.RefreshToken, nil
 }
 
 type GitHubTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	Scope       string `json:"scope"`
-	TokenType   string `json:"token_type"`
+	AccessToken           string `json:"access_token"`
+	ExpiresIn             int    `json:"expires_in"`
+	RefreshToken          string `json:"refresh_token"`
+	RefreshTokenExpiresIn int    `json:"refresh_token_expires_in"`
+	TokenType             string `json:"token_type"`
+	Scope                 string `json:"scope"`
 }
 
 func GetUserDetailsGoogleGithub(ctx *gin.Context) {
@@ -253,13 +255,20 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
 	}
 	defer resp.Body.Close() // Ensure the response body is closed
 
+	if resp.StatusCode == 401 {
+		utils.GetNewAccessTokenFromGithub(ctx, "", "github")
+
+		GetUserDetailsFromGithubFromApi(ctx)
+		return
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Unexpected status code: %d", resp.StatusCode))
 		return
 	}
 
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Failed to read response body:"+err.Error())
 	}
@@ -753,7 +762,7 @@ type EmailUser struct {
 	VerifiedEmail bool   `json:"verified_email"`
 }
 
-func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token string) {
+func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token string, refreshTokenGITHUBorGOOGLE string) {
 	key := utils.DeriveKey(userDetails.ID.String() + os.Getenv("ENC_SECRET"))
 
 	encToken, err := utils.Encrypt([]byte(token), key)
@@ -762,7 +771,13 @@ func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token strin
 		return
 	}
 
-	_, err = initializer.DB.Exec(context.Background(), "UPDATE users SET token = $1 WHERE id = $2", encToken, userDetails.ID)
+	encRefreshToken, err := utils.Encrypt([]byte(refreshTokenGITHUBorGOOGLE), key)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while encrypting the token")
+		return
+	}
+
+	_, err = initializer.DB.Exec(context.Background(), "UPDATE users SET token = $1 , refresh_token = $2 WHERE id = $3", encToken, encRefreshToken, userDetails.ID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, "Error while updating encrypted token in users table")
 		return
