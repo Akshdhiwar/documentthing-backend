@@ -137,8 +137,8 @@ func GetNewAccessTokenFromGithub(ctx *gin.Context, repoName, t string) {
 	// Step 3: Define the GitHub API URL and query parameters
 	apiURL := "https://github.com/login/oauth/access_token"
 	data := url.Values{}
-	data.Set("client_id", os.Getenv("GITHUB_CLIENT_ID"))
-	data.Set("client_secret", os.Getenv("GITHUB_CLIENT_SECRET"))
+	data.Set("client_id", os.Getenv("GITHUB_APP_CLIENT"))
+	data.Set("client_secret", os.Getenv("GITHUB_APP_CLIENT_SECRET"))
 	data.Set("refresh_token", refreshToken)
 	data.Set("grant_type", "refresh_token")
 
