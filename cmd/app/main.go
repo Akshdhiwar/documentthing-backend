@@ -25,6 +25,7 @@ func init() {
 
 func main() {
 	// Create a new Gin router
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	// Create a new scheduler in the local time zone
 	scheduler := gocron.NewScheduler(time.Local)
@@ -40,6 +41,12 @@ func main() {
 
 	// Start the scheduler in blocking mode
 	scheduler.StartAsync()
+
+	// Create a new rate limiter: 5 requests per 5 seconds
+	rateLimiter := utils.NewRateLimiter(5, 5*time.Minute)
+
+	// Use the middleware
+	router.Use(rateLimiter.Middleware())
 
 	router.Use(utils.Cors())
 	baseRoute := "api/v1"
@@ -90,6 +97,12 @@ func main() {
 
 	// Subscription routes
 	// api.SubscriptionRoutes(router.Group(baseRoute + "/subscription"))
+
+	router.GET(baseRoute+"/ping", func(ctx *gin.Context) {
+		ctx.JSON(200, gin.H{
+			"message": "pong",
+		})
+	})
 
 	// Run the server on port 3000
 	router.Run()

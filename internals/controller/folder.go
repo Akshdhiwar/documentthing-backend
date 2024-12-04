@@ -86,55 +86,67 @@ func GetFolder(ctx *gin.Context) {
 }
 
 func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string, org string, t string) (string, error) {
+	const maxRetries = 3 // Define a maximum retry limit
+	var retryCount int
 
-	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+	// Define a function to perform the request
+	var fetchContent func() (string, error)
+	fetchContent = func() (string, error) {
+		// Create a new HTTP request to GitHub API
+		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
 
-	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+		if org != "" {
+			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+		}
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create new HTTP request: %w", err)
+		}
+
+		token, err := GetAccessTokenFromBackendTypeGoogle(ctx, t, repoName)
+		if err != nil {
+			return "", err
+		}
+
+		// Set the Authorization header with the token from the request header
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Make the HTTP request to GitHub API
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to make HTTP request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 401 {
+			retryCount++
+			if retryCount > maxRetries {
+				return "", fmt.Errorf("maximum retries reached for refreshing token")
+			}
+
+			utils.GetNewAccessTokenFromGithub(ctx, repoName, t)
+			// Re-run the function after refreshing the token
+			return fetchContent()
+		}
+
+		// Handle response from GitHub API
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("failed to get repository: %s", resp.Status)
+		}
+
+		// Decode the JSON response into a GitHubRepoResponse struct
+		var githubResp githubContentResponse
+		if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+			return "", fmt.Errorf("failed to decode response body: %w", err)
+		}
+
+		// Return the content
+		return githubResp.Content, nil
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create new HTTP request: %w", err)
-	}
-
-	token, err := GetAccessTokenFromBackendTypeGoogle(ctx, t, repoName)
-	if err != nil {
-		return "", err
-	}
-
-	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/json")
-
-	// Make the HTTP request to GitHub API
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to make HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 401 {
-		utils.GetNewAccessTokenFromGithub(ctx, repoName, t)
-		// Re-run the function after refreshing the token
-		return getFolderJsonFromGithub(ctx, repoName, userName, org, t)
-	}
-
-	// Handle response from GitHub API
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get repository: %s", resp.Status)
-	}
-
-	// Decode the JSON response into a GitHubRepoResponse struct
-	var githubResp githubContentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
-		return "", fmt.Errorf("failed to decode response body: %w", err)
-	}
-
-	// Return the content and SHA in a map
-	return githubResp.Content, nil
-
+	return fetchContent()
 }
 
 type githubContentResponse struct {
