@@ -10,26 +10,26 @@ import (
 )
 
 type RateLimiter struct {
-	visitors map[string]*Visitor
-	mu       sync.Mutex
-	limit    int
-	duration time.Duration
+	visitors      map[string]*Visitor
+	mu            sync.Mutex
+	limit         int
+	duration      time.Duration
+	blockDuration time.Duration
 }
 
 type Visitor struct {
-	lastSeen time.Time
-	tokens   int
+	requests   []time.Time
+	blockUntil time.Time
 }
 
 // NewRateLimiter initializes the rate limiter
-func NewRateLimiter(limit int, duration time.Duration) *RateLimiter {
-	rl := &RateLimiter{
-		visitors: make(map[string]*Visitor),
-		limit:    limit,
-		duration: duration,
+func NewRateLimiter(limit int, duration, blockDuration time.Duration) *RateLimiter {
+	return &RateLimiter{
+		visitors:      make(map[string]*Visitor),
+		limit:         limit,
+		duration:      duration,
+		blockDuration: blockDuration,
 	}
-	go rl.cleanupVisitors()
-	return rl
 }
 
 // AllowRequest checks and updates the request allowance for a specific IP
@@ -39,29 +39,40 @@ func (rl *RateLimiter) AllowRequest(ip string) bool {
 
 	now := time.Now()
 	visitor, exists := rl.visitors[ip]
+
 	if !exists {
 		rl.visitors[ip] = &Visitor{
-			lastSeen: now,
-			tokens:   rl.limit - 1,
+			requests:   []time.Time{now},
+			blockUntil: time.Time{},
 		}
 		return true
 	}
 
-	// Refill tokens based on elapsed time
-	elapsed := now.Sub(visitor.lastSeen)
-	tokensToAdd := int(elapsed / rl.duration)
-	if tokensToAdd > 0 {
-		visitor.tokens = min(visitor.tokens+tokensToAdd, rl.limit)
-		visitor.lastSeen = now
+	// Check if the user is currently blocked
+	if now.Before(visitor.blockUntil) {
+		return false
 	}
 
-	// Check if a request can be allowed
-	if visitor.tokens > 0 {
-		visitor.tokens--
-		return true
+	// Filter requests within the duration window
+	validRequests := []time.Time{}
+	for _, t := range visitor.requests {
+		if now.Sub(t) <= rl.duration {
+			validRequests = append(validRequests, t)
+		}
+	}
+	visitor.requests = validRequests
+
+	// Add the current request
+	visitor.requests = append(visitor.requests, now)
+
+	// Block user if they exceed the limit
+	if len(visitor.requests) > rl.limit {
+		visitor.blockUntil = now.Add(rl.blockDuration)
+		log.Printf("IP %s is blocked until %s", ip, visitor.blockUntil.Format(time.RFC1123))
+		return false
 	}
 
-	return false
+	return true
 }
 
 // Middleware for Gin
@@ -69,35 +80,17 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		clientIP := c.ClientIP()
 
-		// Log the IP address of the request
+		// Log incoming request
 		log.Printf("Incoming request from IP: %s", clientIP)
 
-		// Ignore OPTIONS preflight requests
-		if c.Request.Method == http.MethodOptions {
-			c.Next()
-			return
-		}
-
 		if !rl.AllowRequest(clientIP) {
+			log.Printf("Request denied for IP: %s", clientIP)
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-				"message": "Too many requests. Please try again later.",
+				"message": "Too many requests. You are temporarily blocked. Please try again later.",
 			})
 			return
 		}
-		c.Next()
-	}
-}
 
-// cleanupVisitors periodically removes inactive visitors
-func (rl *RateLimiter) cleanupVisitors() {
-	for {
-		time.Sleep(rl.duration)
-		rl.mu.Lock()
-		for ip, visitor := range rl.visitors {
-			if time.Since(visitor.lastSeen) > rl.duration {
-				delete(rl.visitors, ip)
-			}
-		}
-		rl.mu.Unlock()
+		c.Next()
 	}
 }

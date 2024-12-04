@@ -43,7 +43,7 @@ func main() {
 	scheduler.StartAsync()
 
 	// Create a new rate limiter: 5 requests per 5 seconds
-	rateLimiter := utils.NewRateLimiter(5, 5*time.Minute)
+	rateLimiter := utils.NewRateLimiter(100, 90*time.Second, 5*time.Minute)
 
 	// Use the middleware
 	router.Use(rateLimiter.Middleware())
