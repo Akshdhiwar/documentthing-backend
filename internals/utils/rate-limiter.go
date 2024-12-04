@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -66,6 +67,10 @@ func (rl *RateLimiter) AllowRequest(ip string) bool {
 // Middleware for Gin
 func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		clientIP := c.ClientIP()
+
+		// Log the IP address of the request
+		log.Printf("Incoming request from IP: %s", clientIP)
 
 		// Ignore OPTIONS preflight requests
 		if c.Request.Method == http.MethodOptions {
@@ -73,7 +78,6 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 			return
 		}
 
-		clientIP := c.ClientIP()
 		if !rl.AllowRequest(clientIP) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"message": "Too many requests. Please try again later.",
