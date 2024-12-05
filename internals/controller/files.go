@@ -96,9 +96,9 @@ func GetFileContents(ctx *gin.Context) {
 func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID, org string, t string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoAdmin, repoName, fileId)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", repoAdmin, repoName, fileId)
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileId)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileId)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -213,10 +213,10 @@ func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName str
 	}
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoAdmin, repoName, fileID)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", repoAdmin, repoName, fileID)
 
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileID)
 	}
 
 	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(requestBody))
@@ -251,10 +251,10 @@ func saveContentIntoGithubFiles(ctx *gin.Context, fileID uuid.UUID, repoName str
 func getFileSha(ctx *gin.Context, repoName string, userName string, fileID uuid.UUID, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", userName, repoName, fileID)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", userName, repoName, fileID)
 
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileID)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -495,10 +495,10 @@ func deleteFileFromGithub(ctx *gin.Context, repoName string, repoOwner string, f
 	}
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", repoOwner, repoName, fileID)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", repoOwner, repoName, fileID)
 
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileID)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileID)
 	}
 
 	req, err := http.NewRequest("DELETE", url, bytes.NewBuffer(requestBody))

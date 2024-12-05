@@ -232,59 +232,69 @@ func GetUserDetailsGoogleGithub(ctx *gin.Context) {
 }
 
 func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
-	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while creating request to github :"+err.Error())
-		return
-	}
 
-	token, err := utils.GetAccessTokenFromBackend(ctx)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while getting details from DB")
-		return
-	}
+	const maxRetries = 3
+	attempt := 0
 
-	// Set the Authorization header with the token from the request header
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	var getUserDetails func(attempt int)
+	getUserDetails = func(attempt int) {
+		if attempt > maxRetries {
+			ctx.JSON(http.StatusInternalServerError, "Maximum retries reached")
+			return
+		}
+		req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Error while creating request to github :"+err.Error())
+			return
+		}
 
-	// Send the request
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Request failed:"+err.Error())
-		return
-	}
-	defer resp.Body.Close() // Ensure the response body is closed
+		token, err := utils.GetAccessTokenFromBackend(ctx)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Error while getting details from DB")
+			return
+		}
 
-	if resp.StatusCode == 401 {
-		utils.GetNewAccessTokenFromGithub(ctx, "", "github")
+		// Set the Authorization header with the token from the request header
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-		GetUserDetailsFromGithubFromApi(ctx)
-		return
-	}
+		// Send the request
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Request failed:"+err.Error())
+			return
+		}
+		defer resp.Body.Close() // Ensure the response body is closed
 
-	if resp.StatusCode != http.StatusOK {
-		ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Unexpected status code: %d", resp.StatusCode))
-		return
-	}
+		if resp.StatusCode == 401 {
+			utils.GetNewAccessTokenFromGithub(ctx, "", "github")
 
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Failed to read response body:"+err.Error())
-	}
+			getUserDetails(attempt + 1) // Retry with incremented attempt count
+			return
+		}
 
-	var userDetails GitHubUser
+		if resp.StatusCode != http.StatusOK {
+			ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Unexpected status code: %d", resp.StatusCode))
+			return
+		}
 
-	err = json.Unmarshal(body, &userDetails)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while Unmarshalling")
-		return
-	}
+		// Read the response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Failed to read response body:"+err.Error())
+		}
 
-	id := userDetails.ID
+		var userDetails GitHubUser
 
-	var exists bool
-	err = initializer.DB.QueryRow(context.Background(), `SELECT EXISTS 
+		err = json.Unmarshal(body, &userDetails)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, "Error while Unmarshalling")
+			return
+		}
+
+		id := userDetails.ID
+
+		var exists bool
+		err = initializer.DB.QueryRow(context.Background(), `SELECT EXISTS 
 	(
     SELECT
       1
@@ -294,58 +304,60 @@ func GetUserDetailsFromGithubFromApi(ctx *gin.Context) {
       github_id = $1
   ) AS EXISTS;
 `, id).Scan(&exists)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": err.Error(),
-			"type":    "error",
-		})
-		return
-	}
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": err.Error(),
+				"type":    "error",
+			})
+			return
+		}
 
-	var user models.Users
+		var user models.Users
 
-	if !exists {
+		if !exists {
 
-		user.AvatarURL = userDetails.AvatarURL
-		user.Company = userDetails.Company
-		user.Email = userDetails.Email
-		user.Twitter = userDetails.TwitterUsername
-		user.GithubID = userDetails.ID
-		user.GithubName = userDetails.Login
-		user.Name = userDetails.Name
+			user.AvatarURL = userDetails.AvatarURL
+			user.Company = userDetails.Company
+			user.Email = userDetails.Email
+			user.Twitter = userDetails.TwitterUsername
+			user.GithubID = userDetails.ID
+			user.GithubName = userDetails.Login
+			user.Name = userDetails.Name
 
-		err := initializer.DB.QueryRow(context.Background(),
-			`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name , type)
+			err := initializer.DB.QueryRow(context.Background(),
+				`INSERT INTO users (avatar_url, company, email, twitter, github_id, github_name, name , type)
      			VALUES ($1, $2, $3, $4, $5, $6, $7 , $8)
      			RETURNING id, avatar_url, company, email, twitter, github_id, github_name, name , type`,
-			user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name, "github").
+				user.AvatarURL, user.Company, user.Email, user.Twitter, user.GithubID, user.GithubName, user.Name, "github").
+				Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
+
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, "Unable to save data to DB while creating user :"+err.Error())
+				return
+			}
+
+			ctx.JSON(http.StatusOK, gin.H{
+				"userDetails": user,
+			})
+
+			return
+		}
+
+		err = initializer.DB.QueryRow(context.Background(),
+			`SELECT id , avatar_url , company , email , twitter , github_id , github_name , name , type FROM users WHERE github_id = $1`, id).
 			Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
 
 		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, "Unable to save data to DB while creating user :"+err.Error())
+			ctx.JSON(http.StatusInternalServerError, "Unable to Get user :"+err.Error())
 			return
 		}
 
 		ctx.JSON(http.StatusOK, gin.H{
 			"userDetails": user,
 		})
-
-		return
 	}
 
-	err = initializer.DB.QueryRow(context.Background(),
-		`SELECT id , avatar_url , company , email , twitter , github_id , github_name , name , type FROM users WHERE github_id = $1`, id).
-		Scan(&user.ID, &user.AvatarURL, &user.Company, &user.Email, &user.Twitter, &user.GithubID, &user.GithubName, &user.Name, &user.Type)
-
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Unable to Get user :"+err.Error())
-		return
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"userDetails": user,
-	})
-
+	getUserDetails(attempt)
 }
 
 // GitHubUser represents a GitHub user with nil values handled as empty strings

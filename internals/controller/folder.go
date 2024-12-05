@@ -93,10 +93,10 @@ func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string,
 	var fetchContent func() (string, error)
 	fetchContent = func() (string, error) {
 		// Create a new HTTP request to GitHub API
-		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", userName, repoName)
 
 		if org != "" {
-			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", org, repoName)
 		}
 
 		req, err := http.NewRequest("GET", url, nil)
@@ -297,9 +297,9 @@ func createFile(ctx *gin.Context, userName string, repoName string, fileId strin
 	}
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", userName, repoName, fileId)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", userName, repoName, fileId)
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/files/%s.json", org, repoName, fileId)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileId)
 	}
 
 	// Create a new HTTP request to GitHub API
@@ -350,9 +350,9 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 	}
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", userName, repoName)
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", org, repoName)
 	}
 
 	// Create a new HTTP request to GitHub API
@@ -388,10 +388,10 @@ func updateFolderStructure(ctx *gin.Context, userName string, repoName string, c
 func getFolderSHA(ctx *gin.Context, repoName string, userName string, org string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", userName, repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", userName, repoName)
 
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/simpledocs/folder/folder.json", org, repoName)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", org, repoName)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)

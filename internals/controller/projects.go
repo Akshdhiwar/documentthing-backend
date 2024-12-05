@@ -115,7 +115,7 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
-	folders := []string{"simpledocs", "simpledocs/files"}
+	folders := []string{"Documentthing", "Documentthing/files"}
 
 	for _, folder := range folders {
 		err := createRepoContents(body.Name, name, folder, ctx, body.Org)
@@ -125,7 +125,7 @@ func CreateNewProject(ctx *gin.Context) {
 		}
 	}
 
-	files := []string{"simpledocs/folder/folder.json"}
+	files := []string{"Documentthing/folder/folder.json"}
 
 	for _, file := range files {
 		err := createFilesContent(body.Name, name, file, ctx, body.Org)
