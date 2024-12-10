@@ -1,12 +1,8 @@
 package controller
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -95,39 +91,6 @@ func CreateInvite(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, "User already invited to this project")
 		return
 	}
-
-	// var isEnoughUser bool
-
-	// Check for user count
-	// err = initializer.DB.QueryRow(context.Background(), `
-	// SELECT
-	//   CASE
-	//     WHEN unique_user_count < max_user THEN TRUE
-	//     ELSE FALSE
-	//   END AS is_user_count_less
-	// FROM
-	//   (
-	//     SELECT
-	//       COUNT(DISTINCT oum.user_id) AS unique_user_count,
-	//       o.max_user
-	//     FROM
-	//       public.org_user_mapping oum
-	//       JOIN public.organizations o ON oum.org_id = o.id
-	//     WHERE
-	//       oum.org_id = $1
-	//     GROUP BY o.max_user
-	//   ) AS subquery;
-	// `, body.OrgID).Scan(&isEnoughUser)
-
-	// if err != nil {
-	// 	ctx.JSON(http.StatusInternalServerError, "Error while checking user count")
-	// 	return
-	// }
-
-	// if !isEnoughUser {
-	// 	ctx.JSON(http.StatusForbidden, "Please upgrade your subscription to invite more users")
-	// 	return
-	// }
 
 	// create a record in invite table
 	var id uuid.UUID
@@ -367,48 +330,4 @@ func parseJWTToken(token string, hmacSecret []byte) (claims Claims, err error) {
 	}
 
 	return Claims{}, fmt.Errorf("invalid token")
-}
-
-func UpdateSubscriptionQuantity(quantity, subID string) error {
-	url := fmt.Sprintf("https://api-m.sandbox.paypal.com/v1/billing/subscriptions/%s/revise", subID)
-
-	// Define the payload
-	payload := map[string]interface{}{
-		"quantity": quantity,
-	}
-
-	// Convert the payload to JSON
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal payload: %v", err)
-	}
-
-	// Create the HTTP request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %v", err)
-	}
-
-	// Set headers
-	req.Header.Set("Authorization", "Bearer "+utils.PaypalAccessToken) // Ensure utils.PaypalAccessToken is set
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	// Execute the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// Check for a successful response
-	if resp.StatusCode != 200 {
-		// Read the response body for additional error information
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected response status: %s, response: %s", resp.Status, string(respBody))
-	}
-
-	log.Println("Subscription quantity updated successfully")
-	return nil
 }

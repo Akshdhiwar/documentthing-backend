@@ -6,6 +6,7 @@ require (
 	github.com/go-co-op/gocron v1.37.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/mailgun/mailgun-go/v4 v4.18.5
 )
 
 require (
@@ -25,7 +26,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailgun/errors v0.3.0 // indirect
-	github.com/mailgun/mailgun-go/v4 v4.18.5 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
