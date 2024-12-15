@@ -8,7 +8,10 @@ import (
 )
 
 func CommitRoutes(router *gin.RouterGroup) {
+	router.Use(middleware.AuthMiddleware, middleware.RoleMiddleware([]models.UserRole{models.RoleAdmin, models.RoleEditor}))
 
-	router.POST("/save", middleware.AuthMiddleware, middleware.RoleMiddleware([]models.UserRole{models.RoleAdmin, models.RoleEditor}), controller.CommitChanges)
+	router.POST("/save", controller.CommitChanges)
+
+	router.POST("/edits", controller.CommitEditingChanges)
 
 }

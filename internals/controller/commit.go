@@ -61,7 +61,7 @@ func CommitChanges(ctx *gin.Context) {
 		return
 	}
 
-	latestCommistSha, err := getLatestShaFromGithub(ctx, projectName, userName, org)
+	latestCommistSha, err := getLatestShaFromGithub(ctx, projectName, userName, org, "main")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -85,7 +85,7 @@ func CommitChanges(ctx *gin.Context) {
 		return
 	}
 
-	err = updateReferenceToNewCommit(ctx, projectName, userName, org, newCommitSha)
+	err = updateReferenceToNewCommit(ctx, projectName, userName, org, newCommitSha, "main")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -101,13 +101,13 @@ func CommitChanges(ctx *gin.Context) {
 
 // function to get latest commit sha from github
 
-func getLatestShaFromGithub(ctx *gin.Context, repoName string, userName string, org string) (string, error) {
+func getLatestShaFromGithub(ctx *gin.Context, repoName, userName, org, branchName string) (string, error) {
 	// Create a new HTTP request to GitHub API
 	// https://api.github.com/repos/username/repo/git/ref/heads/main
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/main", userName, repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/%s", userName, repoName, branchName)
 
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/main", org, repoName)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/%s", org, repoName, branchName)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -317,11 +317,11 @@ func createNewCommit(ctx *gin.Context, repoName string, userName string, org str
 	return githubResp.Sha, nil
 }
 
-func updateReferenceToNewCommit(ctx *gin.Context, repoName string, userName string, org string, latestCommitSha string) error {
+func updateReferenceToNewCommit(ctx *gin.Context, repoName string, userName string, org string, latestCommitSha string, branchName string) error {
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/main", userName, repoName)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/%s", userName, repoName, branchName)
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/main", org, repoName)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/%s", org, repoName, branchName)
 	}
 	requestBody, err := json.Marshal(map[string]string{
 		"sha": latestCommitSha,
@@ -430,4 +430,156 @@ type TreeEntry struct {
 	Sha  string `json:"sha"`
 	Size *int   `json:"size,omitempty"` // Size is only present for blobs, so it is optional
 	URL  string `json:"url"`
+}
+
+func CommitEditingChanges(ctx *gin.Context) {
+	var body struct {
+		ProjectID  string     `json:"project_id"`
+		Content    []Contents `json:"content"`
+		Message    string     `json:"message"`
+		BranchName string     `json:"branch_name"`
+		PR         bool       `json:"pr"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while binding body")
+		return
+	}
+
+	projectId, err := uuid.Parse(body.ProjectID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, "Error while parsing project id "+err.Error())
+		return
+	}
+
+	// getting details from DB
+	var projectName, userName, org string
+
+	err = initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
+	FROM 
+		user_project_mapping upm
+	JOIN 
+		users u ON upm.user_id = u.id
+	JOIN 
+		projects p ON upm.project_id = p.id
+	WHERE 
+		p.id = $1
+		AND u.id = $2;
+		`, projectId, userID).Scan(&userName, &projectName, &org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	latestCommistSha, err := getLatestShaFromGithub(ctx, projectName, userName, org, body.BranchName)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	latestCommitTreeSha, err := getLatestTreeShaForCommit(ctx, projectName, userName, org, latestCommistSha)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	latestTreeSha, err := createNewTreeForCommit(ctx, projectName, userName, org, latestCommitTreeSha, body.Content)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	newCommitSha, err := createNewCommit(ctx, projectName, userName, org, latestTreeSha, latestCommistSha, body.Message)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = updateReferenceToNewCommit(ctx, projectName, userName, org, newCommitSha, body.BranchName)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if body.PR {
+		err := CreatePullRequest(ctx, userName, org, projectName, body.BranchName, body.BranchName)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Changes committed successfully",
+	})
+
+}
+
+// PullRequest represents the payload for creating a pull request
+type PullRequest struct {
+	Title string `json:"title"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+	Body  string `json:"body"`
+}
+
+// CreatePullRequest creates a pull request using the GitHub API.
+func CreatePullRequest(ctx *gin.Context, owner, org, repo, headBranch, title string) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", owner, repo)
+
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls", org, repo)
+	}
+
+	// Construct the pull request payload
+	pr := PullRequest{
+		Title: title,
+		Head:  headBranch,
+		Base:  "main",
+	}
+
+	// Serialize the payload to JSON
+	payload, err := json.Marshal(pr)
+	if err != nil {
+		return fmt.Errorf("failed to serialize pull request payload: %w", err)
+	}
+
+	// Create an HTTP client and request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	token, err := utils.GetAccessTokenFromBackend(ctx)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send the request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check for errors in the response
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to create pull request: status code %d", resp.StatusCode)
+	}
+
+	fmt.Println("Pull request created successfully")
+	return nil
 }
