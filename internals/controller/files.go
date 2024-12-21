@@ -21,6 +21,7 @@ func GetFileContents(ctx *gin.Context) {
 	fileId := ctx.Query("file")
 	t := ctx.Query("t")
 	userID := ctx.GetHeader("X-User-Id")
+	branchName := ctx.Query("ref")
 
 	if projId == "" || fileId == "" {
 		ctx.JSON(http.StatusBadRequest, "Please provide required query")
@@ -83,7 +84,7 @@ func GetFileContents(ctx *gin.Context) {
 		}
 	}
 
-	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org, t)
+	content, err := getFileContentFromGithub(ctx, projectName, userName, fileID, org, t, branchName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -93,12 +94,12 @@ func GetFileContents(ctx *gin.Context) {
 
 }
 
-func getFileContentFromGithub(ctx *gin.Context, repoName string, repoAdmin string, fileId uuid.UUID, org string, t string) (string, error) {
+func getFileContentFromGithub(ctx *gin.Context, repoName, repoAdmin string, fileId uuid.UUID, org, t, branchName string) (string, error) {
 
 	// Create a new HTTP request to GitHub API
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", repoAdmin, repoName, fileId)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json?ref=%s", repoAdmin, repoName, fileId, branchName)
 	if org != "" {
-		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json", org, repoName, fileId)
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/files/%s.json?ref=%s", org, repoName, fileId, branchName)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -342,7 +343,7 @@ func DeleteFiles(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "")
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "", "main")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -579,7 +580,7 @@ func UpdateFileName(ctx *gin.Context) {
 		return
 	}
 
-	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "")
+	folderBase64, err := getFolderJsonFromGithub(ctx, projectName, userName, orgName, "", "main")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return

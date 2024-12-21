@@ -86,6 +86,9 @@ func main() {
 	// api route for commit and save the changes
 	api.CommitRoutes(router.Group(baseRoute + "/commit"))
 
+	// api route for Create delete branch
+	api.BranchRoutes(router.Group(baseRoute + "/branch"))
+
 	router.GET(baseRoute+"/ping", func(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{
 			"message": "pong",
