@@ -21,6 +21,7 @@ import (
 func GetFolder(ctx *gin.Context) {
 	id := ctx.Param("id")
 	t := ctx.Param("type")
+	branchName := ctx.Param("ref")
 	userID := ctx.GetHeader("X-User-Id")
 
 	// parsing UUID for project id
@@ -76,7 +77,7 @@ func GetFolder(ctx *gin.Context) {
 		}
 	}
 
-	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName, t)
+	content, err := getFolderJsonFromGithub(ctx, projectName, repoName, orgName, t, branchName)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, err)
 		return
@@ -85,7 +86,7 @@ func GetFolder(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, content)
 }
 
-func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string, org string, t string) (string, error) {
+func getFolderJsonFromGithub(ctx *gin.Context, repoName, userName, org, t, branchName string) (string, error) {
 	const maxRetries = 3 // Define a maximum retry limit
 	var retryCount int
 
@@ -93,10 +94,10 @@ func getFolderJsonFromGithub(ctx *gin.Context, repoName string, userName string,
 	var fetchContent func() (string, error)
 	fetchContent = func() (string, error) {
 		// Create a new HTTP request to GitHub API
-		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", userName, repoName)
+		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json?ref=%s", userName, repoName, branchName)
 
 		if org != "" {
-			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json", org, repoName)
+			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/Documentthing/folder/folder.json?ref=%s", org, repoName, branchName)
 		}
 
 		req, err := http.NewRequest("GET", url, nil)
@@ -214,7 +215,7 @@ func UpdateFolder(ctx *gin.Context) {
 	}
 
 	// Retrieve folder structure from GitHub
-	folderBase64, err := getFolderJsonFromGithub(ctx, repoName, userName, org, "")
+	folderBase64, err := getFolderJsonFromGithub(ctx, repoName, userName, org, "", "main")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error retrieving folder structure from GitHub: " + err.Error()})
 		return
