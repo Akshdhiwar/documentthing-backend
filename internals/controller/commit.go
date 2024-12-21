@@ -516,6 +516,7 @@ func CommitEditingChanges(ctx *gin.Context) {
 			ctx.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
+		delete(EditingBranchesMappings, projectId.String()+userID)
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
