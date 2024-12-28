@@ -130,7 +130,7 @@ func CreateNewProject(ctx *gin.Context) {
 		files := []string{"Documentthing/folder/folder.json"}
 
 		for _, file := range files {
-			err := createFilesContent(body.Name, name, file, ctx, body.Org)
+			err := createFilesContent(body.Name, name, file, ctx, body.Org, "docs")
 			if err != nil {
 				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -141,15 +141,27 @@ func CreateNewProject(ctx *gin.Context) {
 	ctx.JSON(http.StatusCreated, gin.H{"message": "Repository created successfully"})
 }
 
-func createFilesContent(repoName string, name string, file string, ctx *gin.Context, org string) error {
-
-	// Prepare the request body for GitHub API
-	requestBody, err := json.Marshal(map[string]interface{}{
-		"message": "initial commit",
-		"content": "IltdIg==", // Base64-encoded empty string for folder creation
-	})
-	if err != nil {
-		return err
+func createFilesContent(repoName string, name string, file string, ctx *gin.Context, org, projectType string) error {
+	var requestBody []byte
+	var err error
+	if projectType == "docs" {
+		// Prepare the request body for GitHub API
+		requestBody, err = json.Marshal(map[string]interface{}{
+			"message": "initial commit",
+			"content": "IltdIg==", // Base64-encoded empty string for folder creation
+		})
+		if err != nil {
+			return err
+		}
+	} else {
+		// Prepare the request body for GitHub API
+		requestBody, err = json.Marshal(map[string]interface{}{
+			"message": "initial commit",
+			"content": "W10=", // Base64-encoded empty string for folder creation
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	// The URL should point to the desired folder path, using an empty file name to create the folder
@@ -657,7 +669,7 @@ func CreateDrawing(ctx *gin.Context) {
 		return
 	}
 
-	err = createFilesContent(projectName, userName, body.Name+"/"+body.Name+".json", ctx, org)
+	err = createFilesContent(projectName, userName, body.Name+"/"+body.Name+".json", ctx, org, "drawing")
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
