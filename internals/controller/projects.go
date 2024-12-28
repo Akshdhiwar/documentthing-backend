@@ -22,6 +22,7 @@ func CreateNewProject(ctx *gin.Context) {
 		Org   string `json:"org"`
 		Owner string `json:"owner"`
 		OrgID string `json:"org_id"`
+		Type  string `json:"type"`
 	}
 
 	// Bind JSON input to the body variable
@@ -80,7 +81,7 @@ func CreateNewProject(ctx *gin.Context) {
 
 	var projectID uuid.UUID
 
-	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner , org , repo_owner) values ($1, $2 , $3 , $4) RETURNING id`, body.Name, body.ID, body.Org, body.Owner).Scan(&projectID)
+	err = tx.QueryRow(context.Background(), `INSERT INTO projects (name , owner , org , repo_owner, type) values ($1, $2 , $3 , $4, $5) RETURNING id`, body.Name, body.ID, body.Org, body.Owner, body.Type).Scan(&projectID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "Error saving data to DB" + err.Error(),
@@ -115,23 +116,25 @@ func CreateNewProject(ctx *gin.Context) {
 		return
 	}
 
-	folders := []string{"Documentthing", "Documentthing/files"}
+	if body.Type == "docs" {
+		folders := []string{"Documentthing", "Documentthing/files"}
 
-	for _, folder := range folders {
-		err := createRepoContents(body.Name, name, folder, ctx, body.Org)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+		for _, folder := range folders {
+			err := createRepoContents(body.Name, name, folder, ctx, body.Org)
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
-	}
 
-	files := []string{"Documentthing/folder/folder.json"}
+		files := []string{"Documentthing/folder/folder.json"}
 
-	for _, file := range files {
-		err := createFilesContent(body.Name, name, file, ctx, body.Org)
-		if err != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
+		for _, file := range files {
+			err := createFilesContent(body.Name, name, file, ctx, body.Org)
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 	}
 
@@ -259,7 +262,7 @@ func GetProjects(ctx *gin.Context) {
 	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner , up.role
 		FROM projects p 
 		JOIN user_project_mapping up ON p.id = up.project_id 
-		WHERE up.user_id = $1;`, id)
+		WHERE up.user_id = $1 AND p.type = 'docs';`, id)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query projects"})
 		return
@@ -532,4 +535,133 @@ func GetAccessTokenForGithubAppInstallation(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, installationAccessToken)
+}
+
+func GetDrawingsProjects(ctx *gin.Context) {
+	// Retrieve name and id from the query parameters
+	idStr := ctx.Query("id")
+
+	// Validate the parameters
+	if idStr == "" {
+		ctx.JSON(http.StatusBadRequest, "Missing required query parameters: name or id")
+		return
+	}
+
+	// Parse the UUID from the idStr
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error parsing the ID")
+		return
+	}
+
+	// repos, err := getAllRepos(ctx)
+	// if err != nil {
+	// 	ctx.JSON(http.StatusInternalServerError, err.Error())
+	// 	return
+	// }
+
+	// Query the database for projects
+	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner , up.role
+	FROM projects p 
+	JOIN user_project_mapping up ON p.id = up.project_id 
+	WHERE up.user_id = $1 AND p.type = 'drawings';`, id)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query projects"})
+		return
+	}
+	defer rows.Close()
+
+	// Collect project names
+	var projects []Project
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(&project.Name, &project.Id, &project.RepoOwner, &project.Role); err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan project name"})
+			return
+		}
+		projects = append(projects, project)
+	}
+
+	// Check for any errors from the row iteration
+	if err := rows.Err(); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error iterating over project names"})
+		return
+	}
+
+	// check if name of project is present in repos and only send the required projects in api
+
+	// var requiredProjects []Project
+
+	// for i := 0; i < len(projects); i++ {
+	// 	for j := 0; j < len(repos); j++ {
+	// 		// Access the repository directly since repos[j] is of type models.Repository
+	// 		repo := repos[j]
+
+	// 		// Compare the name directly, no need for type assertion
+	// 		if repo.Name == projects[i].Name && repo.Owner.Login == projects[i].RepoOwner {
+	// 			var proj Project
+	// 			proj.Id = projects[i].Id
+	// 			proj.Name = projects[i].Name
+	// 			proj.Role = projects[i].Role
+	// 			proj.RepoOwner = projects[i].RepoOwner
+	// 			requiredProjects = append(requiredProjects, proj)
+	// 		}
+	// 	}
+	// }
+
+	ctx.JSON(http.StatusOK, projects)
+}
+
+func CreateDrawing(ctx *gin.Context) {
+	var body struct {
+		Name      string `json:"name"`
+		ProjectID string `json:"project_id"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// getting details from DB
+	var projectName, userName, org string
+
+	err = initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
+	FROM 
+		user_project_mapping upm
+	JOIN 
+		users u ON upm.user_id = u.id
+	JOIN 
+		projects p ON upm.project_id = p.id
+	WHERE 
+		p.id = $1
+		AND u.id = $2;
+		`, body.ProjectID, userID).Scan(&userName, &projectName, &org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	err = createRepoContents(projectName, userName, body.Name, ctx, org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	err = createFilesContent(projectName, userName, body.Name+"/"+body.Name+".json", ctx, org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, gin.H{"message": "Drawing created successfully"})
 }

@@ -654,3 +654,209 @@ func updateFolderWithUpdatedFileName(folders []models.Folder, fileID uuid.UUID, 
 	}
 	return updatedFolder, nil
 }
+
+func GetDrawings(ctx *gin.Context) {
+	projId := ctx.Query("proj")
+	userID := ctx.GetHeader("X-User-Id")
+
+	// getting details from DB
+	var projectName, userName, org string
+
+	err := initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
+	FROM 
+		user_project_mapping upm
+	JOIN 
+		users u ON upm.user_id = u.id
+	JOIN 
+		projects p ON upm.project_id = p.id
+	WHERE 
+		p.id = $1
+		AND u.id = $2;
+		`, projId, userID).Scan(&userName, &projectName, &org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	contents, err := getDrawingsFromGithub(ctx, projectName, userName, org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	var folders []string
+	for _, content := range contents {
+		if content.Type == "dir" {
+			folders = append(folders, content.Name)
+		}
+	}
+
+	ctx.JSON(http.StatusOK, folders)
+
+}
+
+func getDrawingsFromGithub(ctx *gin.Context, repoName, repoAdmin string, org string) ([]Folder, error) {
+
+	// Create a new HTTP request to GitHub API
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/", repoAdmin, repoName)
+	if org != "" {
+		url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/", org, repoName)
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return []Folder{}, fmt.Errorf("failed to create new HTTP request: %w", err)
+	}
+
+	token, err := GetAccessTokenFromBackendTypeGoogle(ctx, "github", repoName)
+	if err != nil {
+		return []Folder{}, err
+	}
+
+	// Set the Authorization header with the token from the request header
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the HTTP request to GitHub API
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return []Folder{}, fmt.Errorf("failed to make HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle response from GitHub API
+	if resp.StatusCode != http.StatusOK {
+		return []Folder{}, fmt.Errorf("failed to get repository: %s", resp.Status)
+	}
+
+	// Decode the JSON response into a GitHubRepoResponse struct
+	var githubResp []Folder
+	if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+		return []Folder{}, fmt.Errorf("failed to decode response body: %w", err)
+	}
+
+	return githubResp, nil
+}
+
+type Folder struct {
+	Links       Links   `json:"_links"`
+	DownloadURL *string `json:"download_url"` // Nullable field
+	GitURL      string  `json:"git_url"`
+	HtmlURL     string  `json:"html_url"`
+	Name        string  `json:"name"`
+	Path        string  `json:"path"`
+	Sha         string  `json:"sha"`
+	Size        int     `json:"size"`
+	Type        string  `json:"type"`
+	URL         string  `json:"url"`
+}
+
+func GetSpecificDrawing(ctx *gin.Context) {
+	projId := ctx.Query("proj")
+	name := ctx.Param("name")
+	userID := ctx.GetHeader("X-User-Id")
+
+	// getting details from DB
+	var projectName, userName, org string
+
+	err := initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
+	FROM 
+		user_project_mapping upm
+	JOIN 
+		users u ON upm.user_id = u.id
+	JOIN 
+		projects p ON upm.project_id = p.id
+	WHERE 
+		p.id = $1
+		AND u.id = $2;
+		`, projId, userID).Scan(&userName, &projectName, &org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
+	content, err := getDrawingJson(ctx, projectName, userName, org, name)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	ctx.JSON(http.StatusOK, content)
+
+}
+
+func getDrawingJson(ctx *gin.Context, repoName, userName, org, name string) (string, error) {
+	const maxRetries = 3 // Define a maximum retry limit
+	var retryCount int
+
+	// Define a function to perform the request
+	var fetchContent func() (string, error)
+	fetchContent = func() (string, error) {
+		// Create a new HTTP request to GitHub API
+		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s/%s.json", userName, repoName, name, name)
+
+		if org != "" {
+			url = fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s/%s.json", org, repoName, name, name)
+		}
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create new HTTP request: %w", err)
+		}
+
+		token, err := GetAccessTokenFromBackendTypeGoogle(ctx, "github", repoName)
+		if err != nil {
+			return "", err
+		}
+
+		// Set the Authorization header with the token from the request header
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Make the HTTP request to GitHub API
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to make HTTP request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 401 {
+			retryCount++
+			if retryCount > maxRetries {
+				return "", fmt.Errorf("maximum retries reached for refreshing token")
+			}
+
+			utils.GetNewAccessTokenFromGithub(ctx, repoName, "github")
+			// Re-run the function after refreshing the token
+			return fetchContent()
+		}
+
+		// Handle response from GitHub API
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("failed to get repository: %s", resp.Status)
+		}
+
+		// Decode the JSON response into a GitHubRepoResponse struct
+		var githubResp githubContentResponse
+		if err := json.NewDecoder(resp.Body).Decode(&githubResp); err != nil {
+			return "", fmt.Errorf("failed to decode response body: %w", err)
+		}
+
+		// Return the content
+		return githubResp.Content, nil
+	}
+
+	return fetchContent()
+}

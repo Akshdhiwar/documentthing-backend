@@ -25,4 +25,10 @@ func ProjectRoutes(router *gin.RouterGroup) {
 
 	// Route for long polling (user waiting for project updates)
 	router.GET("/:projectID/updates", utils.HandleWebSocket)
+
+	// Route to get the drawings
+	router.GET("/drawings", controller.GetDrawingsProjects)
+
+	// Route to create a drawing in github repo
+	router.POST("/drawing", controller.CreateDrawing)
 }

@@ -14,4 +14,6 @@ func CommitRoutes(router *gin.RouterGroup) {
 
 	router.POST("/edits", controller.CommitEditingChanges)
 
+	router.POST("/drawings", controller.SaveDrawings)
+
 }
