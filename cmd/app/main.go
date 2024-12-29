@@ -25,7 +25,7 @@ func init() {
 
 func main() {
 	// Create a new Gin router
-	gin.SetMode(gin.ReleaseMode)
+	// gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	// Create a new scheduler in the local time zone
 	scheduler := gocron.NewScheduler(time.Local)

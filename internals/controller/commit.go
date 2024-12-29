@@ -200,6 +200,13 @@ func getLatestTreeShaForCommit(ctx *gin.Context, repoName string, userName strin
 	return githubResp.Tree.Sha, nil
 }
 
+type AddOrUpdateFile struct {
+	Path    string `json:"path"`
+	Mode    string `json:"mode"`
+	Type    string `json:"type"`
+	Content string `json:"content"`
+}
+
 func createNewTreeForCommit(ctx *gin.Context, repoName string, userName string, org string, latestTreeSha string, content []Contents) (string, error) {
 
 	type DeleteFile struct {
@@ -207,13 +214,6 @@ func createNewTreeForCommit(ctx *gin.Context, repoName string, userName string, 
 		Mode string      `json:"mode"`
 		Type string      `json:"type"`
 		Sha  interface{} `json:"sha"`
-	}
-
-	type AddOrUpdateFile struct {
-		Path    string `json:"path"`
-		Mode    string `json:"mode"`
-		Type    string `json:"type"`
-		Content string `json:"content"`
 	}
 
 	var blobContents []interface{}
@@ -583,4 +583,53 @@ func CreatePullRequest(ctx *gin.Context, owner, org, repo, headBranch, title str
 
 	fmt.Println("Pull request created successfully")
 	return nil
+}
+
+func SaveDrawings(ctx *gin.Context) {
+	var body struct {
+		ProjectID string `json:"project_id"`
+		Content   string `json:"content"`
+		Name      string `json:"name"`
+		Message   string `json:"message"`
+	}
+
+	userID := ctx.GetHeader("X-User-Id")
+
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, "Error while binding body")
+		return
+	}
+
+	projectId, err := uuid.Parse(body.ProjectID)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, "Error while parsing project id "+err.Error())
+		return
+	}
+
+	// getting details from DB
+	var projectName, userName, org string
+
+	err = initializer.DB.QueryRow(context.Background(), `
+		SELECT 
+		u.github_name,
+		p.name AS project_name,
+		COALESCE(p.org, '') AS project_org
+	FROM 
+		user_project_mapping upm
+	JOIN 
+		users u ON upm.user_id = u.id
+	JOIN 
+		projects p ON upm.project_id = p.id
+	WHERE 
+		p.id = $1
+		AND u.id = $2;
+		`, projectId, userID).Scan(&userName, &projectName, &org)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Error getting project details from DB : " + err.Error(),
+		})
+		return
+	}
+
 }

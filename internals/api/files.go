@@ -13,6 +13,12 @@ func FilesRoutes(router *gin.RouterGroup) {
 	// GET api to get file contents
 	router.GET("/get", controller.GetFileContents)
 
+	// GET api to get drawings
+	router.GET("/drawings", controller.GetDrawings)
+
+	// Get api to get the drawings of specific drawing
+	router.GET("/drawings/:name", controller.GetSpecificDrawing)
+
 	// PUT api to update file contents
 	router.PUT("/update", controller.UpdateFileContents)
 
