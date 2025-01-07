@@ -62,7 +62,6 @@ func CreateBranchForEditing(ctx *gin.Context) {
 	}
 
 	createBranch(ctx, projectName, userName, org, body.BranchName, body.ProjectID, userID)
-
 }
 
 func createBranch(ctx *gin.Context, projectName, userName, org, newBranch, projectID, userID string) {
@@ -112,6 +111,7 @@ func createBranch(ctx *gin.Context, projectName, userName, org, newBranch, proje
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
 		ctx.JSON(http.StatusInternalServerError, fmt.Sprintf("Error creating branch: %s", string(respBody)))
+		return
 	}
 
 	EditingBranchesMappings[projectID+userID] = newBranch
