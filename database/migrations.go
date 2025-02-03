@@ -19,7 +19,8 @@ func Migrations() {
 		name TEXT NOT NULL, 
 		owner UUID NOT NULL,
 		org TEXT DEFAULT NULL,
-		repo_owner TEXT DEFAULT NULL
+		repo_owner TEXT DEFAULT NULL,
+		is_published BOOLEAN DEFAULT FALSE
 	)`)
 
 	if err != nil {
