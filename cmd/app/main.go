@@ -21,6 +21,7 @@ func init() {
 	database.Migrations()
 	utils.InitializeMailgun()
 	initializer.InitiailizeGoogle()
+	initializer.R2Init()
 }
 
 func main() {
@@ -88,6 +89,9 @@ func main() {
 
 	// api route for Create delete branch
 	api.BranchRoutes(router.Group(baseRoute + "/branch"))
+
+	// api routes for public facing documentations
+	api.PublicRoutes(router.Group(baseRoute + "/public"))
 
 	router.GET(baseRoute+"/ping", func(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{
