@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/Akshdhiwar/simpledocs-backend/internals/initializer"
@@ -120,7 +121,7 @@ func PublishDocs(ctx *gin.Context) {
 		return
 	}
 
-	uploadFiles(contents, projectName)
+	uploadFiles(contents, strings.ToLower(projectName))
 
 	ctx.Status(http.StatusOK)
 
