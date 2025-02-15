@@ -99,6 +99,9 @@ func main() {
 		})
 	})
 
+	// Webhook endpoint
+	router.POST("/webhook", utils.HandleGithubWebhook)
+
 	// Run the server on port 3000
 	router.Run()
 

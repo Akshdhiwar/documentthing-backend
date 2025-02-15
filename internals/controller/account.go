@@ -185,9 +185,6 @@ func getGithubAccessToken(code string) (string, string, error) {
 		return "", "", fmt.Errorf("access token not found in response")
 	}
 
-	// Log the token response for debugging (use a logging framework in production)
-	fmt.Printf("Token Response: %+v\n", tokenResponse)
-
 	return tokenResponse.AccessToken, tokenResponse.RefreshToken, nil
 }
 
