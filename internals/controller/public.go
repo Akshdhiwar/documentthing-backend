@@ -123,6 +123,16 @@ func PublishDocs(ctx *gin.Context) {
 
 	uploadFiles(contents, strings.ToLower(projectName))
 
+	_, err = initializer.DB.Exec(context.Background(), `
+	UPDATE public.projects
+	SET is_published = $1, published_docs_name = $2
+	WHERE id = $3;
+	`, true, strings.ToLower(projectName), projectId)
+
+	if err != nil {
+		log.Println("Error updating project:", err)
+	}
+
 	ctx.Status(http.StatusOK)
 
 }

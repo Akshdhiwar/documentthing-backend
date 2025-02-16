@@ -147,6 +147,24 @@ func HandleGithubWebhook(c *gin.Context) {
 		userName := payload.Pusher.Username
 		repoName := payload.Repository.Name
 
+		isPublished := false
+
+		err := initializer.DB.QueryRow(context.Background(), `
+	SELECT is_published
+	FROM public.projects
+	WHERE name = $1;
+		`, repoName).Scan(&isPublished)
+
+		if err != nil {
+			fmt.Println("Error while getting data from DB")
+			return
+		}
+
+		if !isPublished {
+			c.Status(http.StatusOK)
+			return
+		}
+
 		allChangedFiles := append(payload.HeadCommit.Added, payload.HeadCommit.Modified...)
 		filteredChangedFiles := filterJSONFiles(allChangedFiles)
 		addedModifiedURLs := generateGitHubURLs(userName, repoName, filteredChangedFiles)

@@ -271,7 +271,7 @@ func GetProjects(ctx *gin.Context) {
 	// }
 
 	// Query the database for projects
-	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner , up.role
+	rows, err := initializer.DB.Query(ctx, `SELECT p.name , p.id , p.repo_owner , up.role , p.is_published
 		FROM projects p 
 		JOIN user_project_mapping up ON p.id = up.project_id 
 		WHERE up.user_id = $1 AND p.type = 'docs';`, id)
@@ -285,7 +285,7 @@ func GetProjects(ctx *gin.Context) {
 	var projects []Project
 	for rows.Next() {
 		var project Project
-		if err := rows.Scan(&project.Name, &project.Id, &project.RepoOwner, &project.Role); err != nil {
+		if err := rows.Scan(&project.Name, &project.Id, &project.RepoOwner, &project.Role, &project.Published); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan project name"})
 			return
 		}
@@ -328,6 +328,7 @@ type Project struct {
 	Id        uuid.UUID
 	RepoOwner string
 	Role      string
+	Published bool
 }
 
 type GitHubRepoResponse struct {
