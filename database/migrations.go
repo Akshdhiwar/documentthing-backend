@@ -20,7 +20,8 @@ func Migrations() {
 		owner UUID NOT NULL,
 		org TEXT DEFAULT NULL,
 		repo_owner TEXT DEFAULT NULL,
-		is_published BOOLEAN DEFAULT FALSE
+		is_published BOOLEAN DEFAULT FALSE,
+		type TEXT
 	)`)
 
 	if err != nil {
@@ -42,7 +43,8 @@ func Migrations() {
 		twitter TEXT,
 		google_id TEXT,
 		token TEXT,
-		type TEXT
+		type TEXT,
+		refresh_token TEXT
 	)`)
 
 	if err != nil {
