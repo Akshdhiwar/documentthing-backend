@@ -69,7 +69,10 @@ func GetAccessTokenFromGithub(ctx *gin.Context) {
 		return
 	}
 
-	setUpCookieAndToken(ctx, userDetails, token, refreshToken)
+	if err := setUpCookieAndToken(ctx, userDetails, token, refreshToken); err != nil {
+		ctx.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"userDetails": userDetails,
@@ -771,25 +774,22 @@ type EmailUser struct {
 	VerifiedEmail bool   `json:"verified_email"`
 }
 
-func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token string, refreshTokenGITHUBorGOOGLE string) {
+func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token string, refreshTokenGITHUBorGOOGLE string) error {
 	key := utils.DeriveKey(userDetails.ID.String() + os.Getenv("ENC_SECRET"))
 
 	encToken, err := utils.Encrypt([]byte(token), key)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while encrypting the token")
-		return
+		return err
 	}
 
 	encRefreshToken, err := utils.Encrypt([]byte(refreshTokenGITHUBorGOOGLE), key)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while encrypting the token")
-		return
+		return err
 	}
 
 	_, err = initializer.DB.Exec(context.Background(), "UPDATE users SET token = $1 , refresh_token = $2 WHERE id = $3", encToken, encRefreshToken, userDetails.ID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, "Error while updating encrypted token in users table")
-		return
+		return err
 	}
 
 	userAccessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -802,11 +802,7 @@ func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token strin
 	accessToken, err := userAccessToken.SignedString([]byte(os.Getenv("JWTSECRET_ACCESS")))
 
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "Error creating token",
-		})
-
-		return
+		return err
 	}
 
 	userRefreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -819,11 +815,7 @@ func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token strin
 	refreshToken, err := userRefreshToken.SignedString([]byte(os.Getenv("JWTSECRET_REFRESH")))
 
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "Error creating refresh token",
-		})
-
-		return
+		return err
 	}
 
 	ctx.SetSameSite(http.SameSiteNoneMode)
@@ -847,4 +839,6 @@ func setUpCookieAndToken(ctx *gin.Context, userDetails models.Users, token strin
 		true,           // Secure (true if using HTTPS)
 		true,           // HttpOnly (prevents JavaScript access)
 	)
+
+	return nil
 }

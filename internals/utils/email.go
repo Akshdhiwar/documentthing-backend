@@ -2,32 +2,33 @@ package utils
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"html/template"
-	"log"
+	"net/smtp"
 	"os"
+	"strings"
 	"time"
-
-	"github.com/mailgun/mailgun-go/v4"
 )
 
-// MailgunClient is a global variable for the Mailgun client
-var MailgunClient *mailgun.MailgunImpl
+var smtpHost string
+var smtpPort string
+var smtpUsername string
+var smtpPassword string
 var SenderEmail string
 
-// InitializeMailgun initializes the Mailgun client with the given configuration
-func InitializeMailgun() {
-	MailgunClient = mailgun.NewMailgun(os.Getenv("MAILGUN_EMAIL_DOMAIN"), os.Getenv("MAILGUN_API_KEY"))
-	SenderEmail = "documentthing@gmail.com"
-	fmt.Println()
+func InitializeTurboSMTP() {
+	smtpHost = "pro.turbo-smtp.com"
+	smtpPort = "587"                                // or 465 for SSL
+	smtpUsername = os.Getenv("TURBO_SMTP_USERNAME") // e.g. your email
+	smtpPassword = os.Getenv("TURBO_SMTP_PASSWORD")
+	SenderEmail = smtpUsername
 }
 
 // SendOTPEmail sends an email with the OTP to the specified email address
 func SendOTPEmail(email, otp, name string) error {
-	if MailgunClient == nil {
-		return errors.New("mailgun client not initialized")
+	if smtpUsername == "" || smtpPassword == "" {
+		return errors.New("SMTP credentials not set")
 	}
 
 	// Inline HTML template
@@ -146,29 +147,12 @@ func SendOTPEmail(email, otp, name string) error {
 		return fmt.Errorf("error rendering template: %w", err)
 	}
 
-	// Create the email message
-	subject := "Email Verification Code"
-	message := mailgun.NewMessage(SenderEmail, subject, "", email)
-	message.SetHTML(bodyBuffer.String()) // Set the HTML body
-
-	// Set a timeout for the API call
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Send the email
-	_, _, err = MailgunClient.Send(ctx, message)
-	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
-
-	log.Printf("OTP sent to %s successfully", email)
-	return nil
+	return sendSMTPEmail("Email Verification Code", email, bodyBuffer.String())
 }
 
 func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error {
-
-	if MailgunClient == nil {
-		return errors.New("mailgun client not initialized")
+	if smtpUsername == "" || smtpPassword == "" {
+		return errors.New("SMTP credentials not set")
 	}
 
 	htmlTemplate := `<!DOCTYPE html>
@@ -217,9 +201,9 @@ func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error
 
 	// Corrected: use os.Getenv instead of os.GetEnv
 	if os.Getenv("RAILS_ENVIRONMENT") == "PROD" {
-    		baseURL = "https://documentthing.com"
+		baseURL = "https://documentthing.com"
 	} else {
-    		baseURL = "http://localhost:5173"
+		baseURL = "http://localhost:5173"
 	}
 
 	// Data to render the template
@@ -228,7 +212,7 @@ func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error
 		"InviterByName": invitedBy,
 		"ProjectName":   projectName,
 		"Role":          role,
-		"URL":           fmt.Sprintf(`%s/account/login?invite="%s"`,baseURL , jwt),
+		"URL":           fmt.Sprintf(`%s/account/login?invite="%s"`, baseURL, jwt),
 	}
 
 	// Render the template
@@ -238,19 +222,27 @@ func SendInviteMail(jwt, name, projectName, invitedBy, role, email string) error
 	}
 
 	// Create the email message
-	subject := "Invitation to Collaborate on" + " " + projectName
-	message := mailgun.NewMessage(SenderEmail, subject, "", email)
-	message.SetHTML(bodyBuffer.String()) // Set the HTML body
+	subject := "Invitation to Collaborate on " + projectName
+	return sendSMTPEmail(subject, email, bodyBuffer.String())
+}
 
-	// Set a timeout for the API call
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+func sendSMTPEmail(subject, recipient, htmlBody string) error {
+	auth := smtp.PlainAuth("", smtpUsername, smtpPassword, smtpHost)
 
-	// Send the email
-	_, _, err = MailgunClient.Send(ctx, message)
+	msg := strings.Join([]string{
+		"From: " + SenderEmail,
+		"To: " + recipient,
+		"Subject: " + subject,
+		"MIME-Version: 1.0",
+		"Content-Type: text/html; charset=\"UTF-8\"",
+		"",
+		htmlBody,
+	}, "\r\n")
+
+	addr := smtpHost + ":" + smtpPort
+	err := smtp.SendMail(addr, auth, SenderEmail, []string{recipient}, []byte(msg))
 	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
+		return fmt.Errorf("failed to send email via TurboSMTP: %w", err)
 	}
-
 	return nil
 }

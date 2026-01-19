@@ -19,7 +19,7 @@ func init() {
 	}
 	initializer.ConnectToDB()
 	database.Migrations()
-	utils.InitializeMailgun()
+	utils.InitializeTurboSMTP()
 	initializer.InitiailizeGoogle()
 	initializer.R2Init()
 }
